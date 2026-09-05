@@ -61,7 +61,16 @@ jobs:
         env:
           TOOL_HOME: /opt/harmonyos-tools/command-line-tools
         run: |
-          make aarch64
+          set -x
+          make aarch64 2>&1 | tee qemu-build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-build-log
+          path: deps/qemu-build.log
+          retention-days: 7
 
       - name: Upload QEMU libs artifact
         uses: actions/upload-artifact@v4
