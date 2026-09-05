@@ -9,15 +9,131 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc bc bison flex libssl-dev \
+            libncurses5-dev libelf-dev gcc-aarch64-linux-gnu \
+            clang lld llvm make
+
+      - name: Clone Linux kernel v6.12
+        run: |
+          git clone --depth=1 -b v6.12 https://github.com/torvalds/linux linux
+
+      - name: Download kernel config
+        run: |
+          cd linux
+          curl -fsSL https://raw.githubusercontent.com/harmoninux/linux-config/refs/heads/master/arm64_virt > .config
+
+      - name: Build kernel
+        run: |
+          cd linux
+          export KCFLAGS='-march=armv8.5-a+crc+crypto+lse+rcpc+rng+sm4+sha3+dotprod+fp16 -mtune=neoverse-n1 -O2 -falign-functions=64 -fno-strict-aliasing -mllvm -vectorize-loops -mllvm -force-vector-width=2'
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 olddefconfig
+          env KCFLAGS="$KCFLAGS" make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 -j$(nproc)
+
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-aarch64
+          path: linux/arch/arm64/boot/Image
+          retention-days: 30
+
+  build-qemu:
     runs-on: ubuntu-latest
     container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y cmake meson ninja-build autotools-dev autoconf automake \
+            libtool pkg-config python3 flex bison gettext texinfo
+
+      - name: Build QEMU and dependencies (aarch64)
+        working-directory: deps
+        env:
+          TOOL_HOME: /harmonyos-tools/command-line-tools
+        run: |
+          make aarch64
+
+      - name: Upload QEMU libs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-libs-aarch64
+          path: |
+            feature/hish_main/libs/arm64-v8a/
+            feature/hish_main/src/main/resources/rawfile/vm/keymaps/
+            feature/hish_main/src/main/resources/rawfile/vm/efi-virtio.rom
+          retention-days: 30
+
+  build-rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-utils e2fsprogs
+
+      - name: Download Alpine minirootfs
+        run: |
+          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.1-aarch64.tar.gz
+          mkdir alpine
+          tar xzf alpine-minirootfs-3.22.1-aarch64.tar.gz -C alpine
+
+      - name: Create rootfs image
+        run: |
+          qemu-img create -f raw rootfs.img 8G
+          mkfs.ext4 rootfs.img
+          sudo mkdir -p /mnt/rootfs
+          sudo mount -o loop rootfs.img /mnt/rootfs
+          sudo cp -a alpine/* /mnt/rootfs/
+          sudo umount /mnt/rootfs
+          qemu-img convert -p -f raw -O qcow2 rootfs.img rootfs_aarch64.qcow2
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-aarch64
+          path: rootfs_aarch64.qcow2
+          retention-days: 30
+
+  build-hap:
+    needs: [build-kernel, build-qemu, build-rootfs]
+    runs-on: ubuntu-latest
+    container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Download kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-aarch64
+          path: feature/hish_main/src/main/resources/rawfile/vm/
+
+      - name: Download QEMU libs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-libs-aarch64
+          path: ./
+
+      - name: Download rootfs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rootfs-aarch64
+          path: feature/hish_main/src/main/resources/rawfile/vm/
+
+      - name: Rename kernel file
+        run: |
+          mv feature/hish_main/src/main/resources/rawfile/vm/Image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
 
       - name: Prepare build profile
         run: |
@@ -65,7 +181,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: build
+    needs: build-hap
     runs-on: ubuntu-latest
     permissions:
       contents: write

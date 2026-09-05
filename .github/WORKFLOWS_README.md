@@ -2,10 +2,9 @@
 
 ## 工作流文件
 
-### 1. `build-hap.yml` — 构建 + 签名 + 发布 HAP
+### 1. `build-hap.yml` — 完整构建 + 签名 + 发布 HAP
 
-使用预构建 Docker 镜像 `ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest`，
-内置 ohpm、hvigorw、hap-sign-tool 等全部 HarmonyOS 构建工具，**无需手动下载 SDK**。
+完整 CI/CD pipeline 包含 5 个 job，覆盖从内核到 HAP 的全链路构建。
 
 **触发条件：**
 - push 到 master 分支 → 自动构建
@@ -13,17 +12,24 @@
 - Pull Request → 自动构建检查
 - 手动触发（Actions 页面 → Run workflow）
 
-**构建流程：**
-1. Checkout 代码（含子模块）
-2. 从 template 生成 build-profile.json5
-3. `ohpm install --all` 安装依赖
-4. `hvigorw assembleHap` 构建 phone debug HAP
-5. 上传 HAP 作为 Artifact（保留 30 天）
+**构建流程（4 个并行/串行 job）：**
+
+| Job | 运行环境 | 说明 |
+|-----|---------|------|
+| `build-kernel` | ubuntu-latest | 克隆 Linux v6.12 源码，下载 arm64_virt 配置，用 LLVM/Clang 交叉编译内核，产物 `kernel_aarch64` |
+| `build-qemu` | Docker 镜像 | 在预构建镜像中运行 `deps/Makefile`，编译 QEMU 及 6 个依赖库（zstd/zlib/pcre2/libglib/pixman/libqemu），产物 `.so` + keymaps + efi-virtio.rom |
+| `build-rootfs` | ubuntu-latest | 下载 Alpine v3.22 minirootfs，创建 8G ext4 镜像，填充内容后转为 qcow2，产物 `rootfs_aarch64.qcow2` |
+| `build-hap` | Docker 镜像 | 下载前三个 job 的产物，放置到正确目录后 `ohpm install` + `hvigorw assembleHap`，产物 `.hap` |
 
 **发布流程（仅打标签时触发）：**
-1. 下载构建产物
-2. 用 `hap-sign-tool` 签名（需配置 Secrets）
-3. 创建 GitHub Release 并上传签名后的 HAP
+
+| Job | 说明 |
+|-----|------|
+| `publish` | 下载 HAP artifact，用 `hap-sign-tool` 签名（需配置 Secrets），创建 GitHub Release |
+
+**Docker 镜像：**
+`ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest`
+内置 ohpm、hvigorw、hap-sign-tool、HarmonyOS SDK LLVM 工具链等全部构建工具，无需手动下载 SDK。
 
 **签名 Secrets（可选，仅发布时需要）：**
 
@@ -47,7 +53,7 @@
 ## 使用方式
 
 ### 自动构建
-每次 push 到 master 自动触发。
+每次 push 到 master 自动触发全链路构建。
 
 ### 手动触发
 GitHub 仓库 → Actions → Build HAP → Run workflow
@@ -57,7 +63,7 @@ GitHub 仓库 → Actions → Build HAP → Run workflow
 git tag v1.0.0
 git push origin v1.0.0
 ```
-会自动构建、签名并创建 GitHub Release。
+会自动构建内核、QEMU、rootfs、HAP，签名并创建 GitHub Release。
 
 ## 参考
 
