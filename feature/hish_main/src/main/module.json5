@@ -3,9 +3,7 @@
     "name": "hish_main",
     "type": "har",
     "deviceTypes": [
-      "phone",
-      "tablet",
-      "2in1"
+      "phone"
     ]
   }
 }
