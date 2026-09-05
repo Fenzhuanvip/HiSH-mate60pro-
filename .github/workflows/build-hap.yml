@@ -3,173 +3,57 @@ name: Build HAP
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
     branches: [master]
   workflow_dispatch:
 
-env:
-  HOS_SDK_VERSION: "6.1.1"
-  PHONE_MODULE: "phone"
-
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build \
-            libncurses-dev flex bison autoconf gettext \
-            python3 zip unzip pigz
-
-      - name: Download HarmonyOS Command Line Tools
-        run: |
-          if [ -z "${{ secrets.CMDLINE_TOOLS_URL }}" ]; then
-            echo "::error::CMDLINE_TOOLS_URL secret is not set."
-            echo "Please download HarmonyOS Command Line Tools (Linux) from:"
-            echo "https://developer.huawei.com/consumer/cn/download/"
-            echo "Then upload to a storage service and set the URL as a GitHub Secret."
-            exit 1
-          fi
-          wget -q -O commandline-tools.zip "${{ secrets.CMDLINE_TOOLS_URL }}"
-          unzip -q commandline-tools.zip -d $HOME/
-          echo "HOME=$HOME" >> $GITHUB_ENV
-
-      - name: Configure SDK path
-        run: |
-          CMDLINE_DIR=$(find $HOME -maxdepth 2 -type d -name "command-line-tools" | head -1)
-          if [ -z "$CMDLINE_DIR" ]; then
-            CMDLINE_DIR=$(find $HOME -maxdepth 2 -type d -name "ohpm" -exec dirname {} \; | head -1)
-          fi
-          echo "CMDLINE_DIR=$CMDLINE_DIR" >> $GITHUB_ENV
-          echo "TOOL_HOME=$CMDLINE_DIR" >> $GITHUB_ENV
-          echo "PATH=$CMDLINE_DIR/bin:$CMDLINE_DIR/ohpm/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Install ohpm dependencies
-        run: |
-          ohpm install --all
 
       - name: Prepare build profile
         run: |
           cp build-profile.template.json5 build-profile.json5
 
-      - name: Generate self-signed certificate
+      - name: Install dependencies
         run: |
-          KEYSTORE_PATH="$HOME/hish-debug.p12"
-          KEYSTORE_PASS="hish123456"
-          ALIAS="hish_debug"
-          VALIDITY=3650
-
-          keytool -genkeypair \
-            -alias "$ALIAS" \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity "$VALIDITY" \
-            -keystore "$KEYSTORE_PATH" \
-            -storepass "$KEYSTORE_PASS" \
-            -keypass "$KEYSTORE_PASS" \
-            -dname "CN=HiSH Debug, OU=Dev, O=Personal, L=CN, ST=CN, C=CN" \
-            -storetype PKCS12
-
-          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> $GITHUB_ENV
-          echo "KEYSTORE_PASS=$KEYSTORE_PASS" >> $GITHUB_ENV
-          echo "ALIAS=$ALIAS" >> $GITHUB_ENV
-
-      - name: Configure signing in build-profile
-        run: |
-          SIGNING_CONFIG=$(cat <<EOF
-          {
-            "name": "default",
-            "type": "HarmonyOS",
-            "material": {
-              "certpath": "",
-              "storePassword": "${KEYSTORE_PASS}",
-              "keyAlias": "${ALIAS}",
-              "keyPassword": "${KEYSTORE_PASS}",
-              "profile": "",
-              "signAlg": "SHA256withECDSA",
-              "storeFile": "${KEYSTORE_PATH}"
-            }
-          }
-          EOF
-          )
-
-          python3 -c "
-          import json5
-          import os
-
-          with open('build-profile.json5', 'r') as f:
-              content = f.read()
-
-          # Simple JSON5 parsing: remove comments and trailing commas
-          import re
-          content = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
-          content = re.sub(r',\s*([}\]])', r'\1', content)
-          data = json.loads(content)
-
-          signing_config = {
-              'name': 'default',
-              'type': 'HarmonyOS',
-              'material': {
-                  'storeFile': os.environ['KEYSTORE_PATH'],
-                  'storePassword': os.environ['KEYSTORE_PASS'],
-                  'keyAlias': os.environ['ALIAS'],
-                  'keyPassword': os.environ['KEYSTORE_PASS'],
-                  'certpath': '',
-                  'profile': '',
-                  'signAlg': 'SHA256withECDSA'
-              }
-          }
-          data['app']['signingConfigs'] = [signing_config]
-
-          with open('build-profile.json5', 'w') as f:
-              json.dump(data, f, indent=2)
-          " || echo "Fallback: using template as-is"
+          ohpm install --all
 
       - name: Build phone HAP (debug)
         run: |
+          hvigorw clean --no-daemon
           hvigorw assembleHap \
-            --mode debug \
-            --product default \
-            --module ${PHONE_MODULE}@default \
+            --mode module \
             -p product=default \
-            --no-daemon \
-            --analyze=false \
-            2>&1 | tee build.log
+            -p buildMode=debug \
+            --no-daemon 2>&1 | tee build.log
 
-      - name: Locate build output
-        if: always()
+      - name: Get build output path
+        id: get_output
         run: |
-          echo "=== Searching for HAP files ==="
+          OUTPUT_DIR=$(find . -path "*/product/phone/build/default/outputs/default" -type d | head -1)
+          if [ -z "$OUTPUT_DIR" ]; then
+            OUTPUT_DIR=$(find . -name "*.hap" -exec dirname {} \; | head -1)
+          fi
+          echo "output_path=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+          echo "=== HAP files ==="
           find . -name "*.hap" -type f 2>/dev/null || echo "No HAP found"
-          echo "=== Build log tail ==="
-          tail -50 build.log || true
 
       - name: Upload HAP artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: phone-debug-hap
           path: |
-            **/*.hap
-            !**/oh_modules/**
+            ${{ steps.get_output.outputs.output_path }}/*.hap
+            build.log
           retention-days: 30
 
       - name: Upload build log on failure
@@ -179,3 +63,58 @@ jobs:
           name: build-log
           path: build.log
           retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download Build Output
+        uses: actions/download-artifact@v4
+        with:
+          name: phone-debug-hap
+          path: ./build-output
+
+      - name: Sign HAP
+        id: sign_hap
+        if: env.SIGNING_CERT && env.SIGNING_PROFILE && env.SIGNING_KEY
+        env:
+          SIGNING_CERT: ${{ secrets.SIGNING_CERT }}
+          SIGNING_PROFILE: ${{ secrets.SIGNING_PROFILE }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          HAP_FILE=$(find ./build-output -name "*.hap" | head -1)
+          SIGNED_HAP="${HAP_FILE%.hap}-signed.hap"
+          java -jar /harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar \
+            sign-app \
+            -keyAlias "hish_debug" \
+            -signAlg "SHA256withECDSA" \
+            -mode "localSign" \
+            -appCertFile "${SIGNING_CERT}" \
+            -profileFile "${SIGNING_PROFILE}" \
+            -inFile "$HAP_FILE" \
+            -keystoreFile "${SIGNING_KEY}" \
+            -outFile "$SIGNED_HAP" \
+            -keyPwd "${{ secrets.KEY_PASSWORD }}" \
+            -keystorePwd "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -signCode "1"
+          echo "signed_hap=$SIGNED_HAP" >> $GITHUB_OUTPUT
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            ${{ steps.sign_hap.outcome == 'success' && steps.sign_hap.outputs.signed_hap || './build-output/*.hap' }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
