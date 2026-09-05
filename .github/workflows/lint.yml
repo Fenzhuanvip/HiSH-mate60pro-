@@ -1,0 +1,70 @@
+name: Lint Check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Check ArkTS file syntax
+        run: |
+          echo "=== Checking .ets files for common issues ==="
+          ERROR_COUNT=0
+
+          for file in $(find . -name "*.ets" -not -path "*/oh_modules/*" -not -path "*/build/*" -not -path "*/.preview/*"); do
+            # Check for unmatched braces
+            OPEN=$(grep -o '{' "$file" | wc -l)
+            CLOSE=$(grep -o '}' "$file" | wc -l)
+            if [ "$OPEN" != "$CLOSE" ]; then
+              echo "::error file=$file::Unmatched braces: $OPEN open vs $CLOSE close"
+              ERROR_COUNT=$((ERROR_COUNT + 1))
+            fi
+
+            # Check for unmatched parentheses
+            OPEN_P=$(grep -o '(' "$file" | wc -l)
+            CLOSE_P=$(grep -o ')' "$file" | wc -l)
+            if [ "$OPEN_P" != "$CLOSE_P" ]; then
+              echo "::error file=$file::Unmatched parentheses: $OPEN_P open vs $CLOSE_P close"
+              ERROR_COUNT=$((ERROR_COUNT + 1))
+            fi
+
+            # Check for TODO/FIXME
+            TODOS=$(grep -c -E '(TODO|FIXME|HACK|XXX)' "$file" || true)
+            if [ "$TODOS" -gt 0 ]; then
+              echo "::warning file=$file::Found $TODOS TODO/FIXME markers"
+            fi
+          done
+
+          echo "=== Syntax check complete: $ERROR_COUNT errors ==="
+          if [ "$ERROR_COUNT" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Check C++ code formatting
+        run: |
+          if command -v clang-format &>/dev/null; then
+            echo "=== Checking C++ formatting ==="
+            for file in $(find feature/hish_main/src/main/cpp -name "*.cpp" -o -name "*.hpp" -o -name "*.h" 2>/dev/null); do
+              DIFF=$(clang-format -style=file "$file" 2>/dev/null | diff - "$file" || true)
+              if [ -n "$DIFF" ]; then
+                echo "::warning file=$file::Code formatting differs from clang-format style"
+              fi
+            done
+          else
+            echo "clang-format not available, skipping C++ formatting check"
+          fi

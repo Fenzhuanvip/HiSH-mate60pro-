@@ -119,6 +119,9 @@ target_link_libraries(hish_main PUBLIC
     ${ZLIB_LIBRARIES}
 )
 
+target_compile_options(hish_main PRIVATE -O2 -flto)
+target_link_options(hish_main PRIVATE -flto)
+
 # Add zlib include if found
 if(ZLIB_FOUND)
     include_directories(${ZLIB_INCLUDE_DIRS})

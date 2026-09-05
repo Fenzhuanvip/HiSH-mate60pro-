@@ -3,13 +3,13 @@
   "buildOptionSet": [
     {
       "name": "release",
-      "arkOptions": {
-        "obfuscation": {
-          "ruleOptions": {
-            "enable": false
+        "arkOptions": {
+          "obfuscation": {
+            "ruleOptions": {
+              "enable": true
+            }
           }
         }
-      }
     }
   ],
   "targets": [

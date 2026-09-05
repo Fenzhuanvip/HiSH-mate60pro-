@@ -141,17 +141,19 @@ function createTerminal() {
 
     var options = {
         cursorBlink: true,
-        allowProposedApi: true, // Needed for some addons
-        allowTransparency: true, // User preference: Transparency supported
+        allowProposedApi: true,
+        allowTransparency: false,
         fontFamily: 'monospace, "Droid Sans Mono", "Courier New", "Courier", monospace',
-        fontSize: 14, // Default, will be overridden by native.getFontSize()
+        fontSize: 14,
         theme: {
-            background: 'rgba(0, 0, 0, 0)', // Transparent by default to show effects behind
+            background: '#000000',
             foreground: '#ffffff',
             cursor: '#ffffff'
         },
-        screenReaderMode: false, // Disabled to fix touch scrolling issues (was conflicting with native selection)
-        scrollback: 3000, // [Optimization] Limit scrollback to 3000 lines (Ring Buffer) to prevent memory overflow
+        screenReaderMode: false,
+        scrollback: 1500,
+        fastScroll: true,
+        drawBoldText: true,
     };
 
     term = new Terminal(options);
@@ -176,7 +178,7 @@ window.onload = function () {
 
     function initialize() {
         // Disable WebGL as per user request (Compatibility Mode)
-        let shouldEnableWebGL = false;
+        let shouldEnableWebGL = true;
 
         // Check if native is ready
         if (!window.native && retryCount < maxRetries) {
@@ -383,7 +385,7 @@ function setupEventListeners() {
 
     // 4. Handle Window Resize
     window.addEventListener('resize', () => {
-        setTimeout(() => fitAddon.fit(), 100);
+        setTimeout(() => fitAddon.fit(), 30);
     });
 
     // 5. Prevent default browser behaviors that might interfere
@@ -466,32 +468,12 @@ exports.write = (data, applicationMode) => {
 exports.writeBase64 = (base64Data, applicationMode) => {
     try {
         let binaryString = atob(base64Data);
-
-        // 兼容性修复：还原字面量转义序列 (Unescape)
-        // 支持 \xHH, \uHHHH, 以及常见 C 风格转义符 (\n, \r, \t, \', \", \\)
-        binaryString = binaryString.replace(/\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|.)/g, (match, param) => {
-            if (param[0] === 'x' || param[0] === 'u') {
-                return String.fromCharCode(parseInt(param.slice(1), 16));
-            }
-            switch (param) {
-                case 'n': return '\n';
-                case 'r': return '\r';
-                case 't': return '\t';
-                case 'b': return '\b';
-                case 'f': return '\f';
-                case 'v': return '\v';
-                case '0': return '\0';
-                default: return param; // For \' \" \\ and others, just return the char
-            }
-        });
-
         const uint8 = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
             uint8[i] = binaryString.charCodeAt(i);
         }
         term.write(uint8);
 
-        // Sync Application Cursor Mode using xterm.js state
         if (term.modes.applicationCursorKeysMode !== applicationMode) {
             if (native && native.setApplicationMode) {
                 native.setApplicationMode(term.modes.applicationCursorKeysMode);
