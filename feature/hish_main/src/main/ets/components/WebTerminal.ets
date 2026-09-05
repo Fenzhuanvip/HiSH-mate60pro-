@@ -265,10 +265,10 @@ export default struct WebTerminal {
 
   @Builder
   buildShowVirtualKeysButton() {
-    Column() {
+    Row() {
       Button('▲', { buttonStyle: ButtonStyleMode.TEXTUAL })
         .width(120)
-        .height(16)
+        .height(20)
         .fontSize(16)
         .borderRadius(VKeyRadius)
         .fontColor('#444')
@@ -279,6 +279,8 @@ export default struct WebTerminal {
         })
     }
     .width('100%')
+    .height(24)
+    .justifyContent(FlexAlign.Center)
   }
 
   @Builder
@@ -322,9 +324,9 @@ export default struct WebTerminal {
           Row().layoutWeight(1);
 
           this.buildVKey('PGUP', NormalKeySequences.PGUP);
-          this.buildVKey('HOME', NormalKeySequences.HOME);
+          this.toggleShiftKey('SHIFT', () => this.toggleShift());
           this.buildVKey('↑', NormalKeySequences.UP, NormalKeySequences.UP_APP);
-          this.buildVKey('END', NormalKeySequences.END);
+          this.buildVKey('ENTER', '\r');
 
           this.settingsButton();
         }
@@ -356,6 +358,9 @@ export default struct WebTerminal {
         duration: 5000
       })
     }
+    setTimeout(() => {
+      this.webviewController.runJavaScript('exports.fit()')
+    }, 200)
   }
 
   private toggleCtrl(): void {
@@ -415,13 +420,13 @@ export default struct WebTerminal {
     if (this.resizeTimeout !== undefined) {
       clearTimeout(this.resizeTimeout!!)
     }
-    this.resizeTimeout = setTimeout(() => this.sendInput('\x1b' + `[8;${height};${width}t`), 100)
+    this.resizeTimeout = setTimeout(() => this.sendInput('\x1b' + `[8;${height};${width}t`), 50)
   }
 
   // 性能优化：输出缓冲区
   private pendingChunks: Uint8Array[] = [];
   private flushTimeoutID: number | undefined = undefined;
-  private readonly FLUSH_INTERVAL = 16; // 60FPS (16.6ms)
+  private readonly FLUSH_INTERVAL = 8;
 
   private onData(ab: ArrayBuffer) {
     try {

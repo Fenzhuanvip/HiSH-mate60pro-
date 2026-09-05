@@ -376,19 +376,9 @@ struct PhoneOrTablet {
 
 @Component
 export struct Index {
-  isPc: boolean = deviceInfo.deviceType === '2in1'
-
-  aboutToAppear(): void {
-    // webview.WebviewController.setWebDebuggingAccess(true)
-  }
-
   build() {
     Column() {
-      if (this.isPc) {
-        PcIndex()
-      } else {
-        PhoneOrTablet()
-      }
+      PhoneOrTablet()
     }
     .width('100%')
     .height('100%')

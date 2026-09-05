@@ -8,13 +8,12 @@ export interface VirtualKeyMetrics {
 }
 
 export function getVirtualKeyMetrics(deviceType: string): VirtualKeyMetrics {
-  const isPhone = deviceType === 'phone'
   return {
-    margin: isPhone ? 1 : 2,
-    padding: isPhone ? 2 : 4,
+    margin: 1,
+    padding: 2,
     height: 28,
-    width: isPhone ? 42 : 60,
-    fontSize: isPhone ? 10 : 14,
+    width: 42,
+    fontSize: 10,
     radius: 5
   }
 }
