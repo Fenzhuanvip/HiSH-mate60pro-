@@ -30,7 +30,7 @@ function startVm(options: VmOptions): boolean {
     'iommu=none,its=off,usb=off,virtualization=off,memory-backend=mem0,compact-highmem=on,' +
     'dump-guest-core=off,mem-merge=off,hmat=off',
     '-overcommit', 'cpu-pm=off',
-    '-cpu', 'max,pauth-impdef=on,sve=off,pmu=off', '-accel', 'tcg,thread=multi,tb-size=2048',
+    '-cpu', 'max,pauth-impdef=on,sve=off,pmu=off', '-accel', 'tcg,thread=multi,tb-size=4096',
     "-object", "rng-random,filename=/dev/urandom,id=rng0",
     "-device", "virtio-rng-pci-non-transitional,rng=rng0",
     '-rtc', 'base=utc,clock=host', '-L', options.baseDir]
@@ -108,7 +108,7 @@ function startVm(options: VmOptions): boolean {
     fs.mkdirSync(options.sharedFolder)
   }
 
-  const supportJit: boolean = deviceInfo.deviceType !== 'phone';
+  const supportJit: boolean = true;
 
   const started: boolean = napi.startVM({
     argsLines: args.join('\n'),
