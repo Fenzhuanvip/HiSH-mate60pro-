@@ -23,6 +23,11 @@ jobs:
         run: |
           cp build-profile.template.json5 build-profile.json5
 
+      - name: Upgrade Hvigor to 6.1.1
+        run: |
+          npm install -g @ohos/hvigor@6.1.1 @ohos/hvigor-ohos-plugin@6.1.1 2>&1 || true
+          hvigorw --version 2>&1 || true
+
       - name: Install dependencies
         run: |
           ohpm install --all
