@@ -52,8 +52,9 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y cmake meson ninja-build autotools-dev autoconf automake \
-            libtool pkg-config python3 flex bison gettext texinfo
+          apt-get install -y cmake autotools-dev autoconf automake \
+            libtool pkg-config python3 python3-pip flex bison gettext texinfo
+          pip3 install --upgrade meson ninja
 
       - name: Build QEMU and dependencies (aarch64)
         working-directory: deps
