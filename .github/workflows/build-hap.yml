@@ -58,7 +58,7 @@ jobs:
       - name: Build QEMU and dependencies (aarch64)
         working-directory: deps
         env:
-          TOOL_HOME: /harmonyos-tools/command-line-tools
+          TOOL_HOME: /opt/harmonyos-tools/command-line-tools
         run: |
           make aarch64
 
@@ -209,7 +209,7 @@ jobs:
         run: |
           HAP_FILE=$(find ./build-output -name "*.hap" | head -1)
           SIGNED_HAP="${HAP_FILE%.hap}-signed.hap"
-          java -jar /harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar \
+          java -jar /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar \
             sign-app \
             -keyAlias "hish_debug" \
             -signAlg "SHA256withECDSA" \
