@@ -25,7 +25,16 @@ jobs:
 
       - name: Upgrade Hvigor to 6.1.1
         run: |
-          pnpm add -g @ohos/hvigor@6.1.1 @ohos/hvigor-ohos-plugin@6.1.1 2>&1 || true
+          # 找到容器中的 node/npm
+          NODE_BIN=$(find /opt/harmonyos-tools -name "node" -type f 2>/dev/null | head -1)
+          NPM_BIN=$(find /opt/harmonyos-tools -name "npm" -type f 2>/dev/null | head -1)
+          echo "node: $NODE_BIN"
+          echo "npm: $NPM_BIN"
+          if [ -n "$NPM_BIN" ]; then
+            $NPM_BIN install -g @ohos/hvigor@6.1.1 @ohos/hvigor-ohos-plugin@6.1.1 2>&1 || true
+          elif [ -n "$NODE_BIN" ]; then
+            $NODE_BIN -e "const{execSync}=require('child_process');execSync('npx npm install -g @ohos/hvigor@6.1.1 @ohos/hvigor-ohos-plugin@6.1.1',{stdio:'inherit'})" 2>&1 || true
+          fi
           which hvigorw && hvigorw --version 2>&1 || true
 
       - name: Install dependencies
