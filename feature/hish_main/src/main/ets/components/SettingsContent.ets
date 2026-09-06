@@ -10,7 +10,7 @@ import { BlockTitle, LinkItem, SettingBlockStyle, SettingItem } from './Settings
 import deviceInfo from '@ohos.deviceInfo';
 import { backgroundRunningManager } from '../lib/backgroundRunningManager';
 import copyFile from '../lib/copyFile';
-import { ImmersiveButtonModifier } from '../lib/immersiveButton';
+
 
 const DOMAIN = 0x0000;
 
@@ -119,7 +119,7 @@ export default struct SettingsContent {
   context = this.getUIContext().getHostContext() as common.UIAbilityContext
   preferences?: preference.Preferences
   blockStyle: SettingBlockStyle = new SettingBlockStyle()
-  immersiveButton: ImmersiveButtonModifier = new ImmersiveButtonModifier()
+  
 
   async saveKeepScreenOn() {
     await savePreference(appOption.keepScreenOn, this.keepScreenOn, this.getUIContext())
@@ -243,13 +243,13 @@ export default struct SettingsContent {
   private buildBackgroundImageButtons() {
     Row() {
       Button($r('app.string.setting_choose_file'), { buttonStyle: ButtonStyleMode.TEXTUAL })
-        .attributeModifier(this.immersiveButton)
+        
         .onClick(() => {
           this.pickBackgroundImage()
         })
       if (this.termBackgroundImage.length > 0) {
         Button($r('app.string.setting_background_image_clear'), { buttonStyle: ButtonStyleMode.TEXTUAL })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick(() => {
             this.clearBackgroundImage()
           })
@@ -280,7 +280,7 @@ export default struct SettingsContent {
   @Builder
   private buildUploadFontButton() {
     Button($r('app.string.setting_choose_file'), { buttonStyle: ButtonStyleMode.TEXTUAL })
-        .attributeModifier(this.immersiveButton)
+        
       .onClick(() => {
         this.pickUserFont()
       })
@@ -401,7 +401,7 @@ export default struct SettingsContent {
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Button($r('app.string.setting_background_image_clear'), { buttonStyle: ButtonStyleMode.TEXTUAL })
-          .attributeModifier(this.immersiveButton)
+          
                   .onClick(() => {
                     this.removeUserFont(index)
                   })

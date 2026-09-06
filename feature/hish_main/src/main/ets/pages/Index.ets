@@ -12,7 +12,7 @@ import RootfsManagementContent from "../components/RootfsManagementContent";
 import UserGuide from "../components/UserGuide";
 import { webview } from "@kit.ArkWeb";
 import VmStatusBar from '../components/VmStatusBar';
-import { ImmersiveButtonModifier, ImmersivePrimaryButtonModifier } from '../lib/immersiveButton';
+
 
 @Component
 struct PcIndex {
@@ -62,8 +62,7 @@ struct PcIndex {
     })
   })
   webController = new webview.WebviewController()
-  immersiveButton: ImmersiveButtonModifier = new ImmersiveButtonModifier()
-  immersivePrimaryButton: ImmersivePrimaryButtonModifier = new ImmersivePrimaryButtonModifier()
+
 
   build() {
     Column() {
@@ -98,7 +97,7 @@ struct PcIndex {
           .borderRadius(4)
           .padding(4)
           .margin({ right: 10 })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             const vncEnabled = AppStorage.get<boolean>(appOption.vncEnabled)!!
             if (vncEnabled) {
@@ -123,7 +122,7 @@ struct PcIndex {
           .borderRadius(4)
           .padding(4)
           .margin({ right: 10 })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             this.emulatorManagementController.open()
           })
@@ -142,7 +141,7 @@ struct PcIndex {
           .borderRadius(4)
           .padding(4)
           .margin({ right: 10 })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             this.rootfsManagementController.open()
           })
@@ -157,7 +156,7 @@ struct PcIndex {
           .borderRadius(4)
           .padding(4)
           .margin({ right: 10 })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             this.sharedFolderController.open()
           })
@@ -172,7 +171,7 @@ struct PcIndex {
           .borderRadius(4)
           .padding(4)
           .margin({ right: 10 })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             this.settingController.open()
           })
@@ -190,7 +189,7 @@ struct PcIndex {
           }
           .borderRadius(4)
           .padding(4)
-          .attributeModifier(this.immersiveButton)
+          
           .onClick((event: ClickEvent) => {
             this.userGuideController.open()
           })
@@ -222,7 +221,7 @@ struct PcIndex {
       Button($r('app.string.btn_add'))
         .width('100%')
         .fontColor($r('sys.color.interactive_active'))
-        .attributeModifier(this.immersivePrimaryButton)
+        
         .onClick(() => {
           const id = util.generateRandomUUID()
           const emulatorToEdit: Emulator = {

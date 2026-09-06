@@ -4,7 +4,7 @@ import EditEmulatorContent from './EditEmulatorContent';
 import EmulatorListGrid from './EmulatorListGrid';
 import { CustomContentDialog } from '@kit.ArkUI';
 import { BackButton } from './BackButton';
-import { ImmersiveButtonModifier } from '../lib/immersiveButton';
+
 
 class MenuOption {
   value: string | Resource = '';
@@ -13,7 +13,7 @@ class MenuOption {
 
 @Component
 export default struct EmulatorManagementContent {
-  immersiveButton: ImmersiveButtonModifier = new ImmersiveButtonModifier()
+  
 
   build() {
     Column() {
@@ -27,7 +27,7 @@ export default struct EmulatorManagementContent {
         Blank().layoutWeight(1)
 
         Button($r('app.string.btn_add'), { buttonStyle: ButtonStyleMode.TEXTUAL })
-          .attributeModifier(this.immersiveButton)
+          
           .onClick(() => {
             const id = util.generateRandomUUID()
             this.getUIContext().getRouter().pushUrl({
