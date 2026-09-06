@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Cache QEMU build
         id: cache-qemu
         uses: actions/cache@v4
@@ -66,10 +69,6 @@ jobs:
           key: qemu-aarch64-${{ hashFiles('deps/**') }}
           restore-keys: |
             qemu-aarch64-
-
-      - name: Checkout code
-        if: steps.cache-qemu.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
 
       - name: Build QEMU and dependencies (aarch64)
         if: steps.cache-qemu.outputs.cache-hit != 'true'
