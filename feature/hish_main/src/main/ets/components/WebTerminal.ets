@@ -217,25 +217,26 @@ export default struct WebTerminal {
   }
 
   build() {
-    Column() {
-      Web({
-        src: $rawfile('term/term.html'),
-        controller: this.webviewController
-      })
-        .javaScriptProxy({
-          object: this,
-          name: 'native',
-          methodList: ['sendInput', 'resize', 'load',
-            'getFontSize', 'getFontFamily',
-            'getCursorShape', 'getCursorBlink',
-            'getLigatures', 'getItalic',
-            'getBackgroundColor', 'getBackgroundImage', 'getBackgroundBlur',
-            'getUserFonts',
-            'setApplicationMode',
-            'onAvailableFontsDetected'],
-          controller: this.webviewController,
-          asyncMethodList: [],
-          permission: `{
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
+        Web({
+          src: $rawfile('term/term.html'),
+          controller: this.webviewController
+        })
+          .javaScriptProxy({
+            object: this,
+            name: 'native',
+            methodList: ['sendInput', 'resize', 'load',
+              'getFontSize', 'getFontFamily',
+              'getCursorShape', 'getCursorBlink',
+              'getLigatures', 'getItalic',
+              'getBackgroundColor', 'getBackgroundImage', 'getBackgroundBlur',
+              'getUserFonts',
+              'setApplicationMode',
+              'onAvailableFontsDetected'],
+            controller: this.webviewController,
+            asyncMethodList: [],
+            permission: `{
           "javascriptProxyPermission": {
             "urlPermissionList": [
               {
@@ -247,18 +248,22 @@ export default struct WebTerminal {
             ]
           }
         }`
-        })
-        .backgroundColor('#000')
-        .layoutWeight(1)
-        .bindContextMenu(this.contextMenu(this.webviewController), ResponseType.RightClick)
-      if (this.virtKeyEnabled) {
-        if (this.showVirtKey) {
+          })
+          .backgroundColor('#000')
+          .width('100%')
+          .layoutWeight(1)
+          .bindContextMenu(this.contextMenu(this.webviewController), ResponseType.RightClick)
+        if (this.virtKeyEnabled && this.showVirtKey) {
           this.buildVirtualKeys()
-        } else {
-          this.buildShowVirtualKeysButton()
         }
       }
+      .width('100%')
+      .height('100%')
+      if (this.virtKeyEnabled && !this.showVirtKey) {
+        this.buildShowVirtualKeysButton()
+      }
     }
+    .width('100%')
     .height('100%')
   }
 
@@ -266,11 +271,11 @@ export default struct WebTerminal {
   buildShowVirtualKeysButton() {
     Row() {
       Button('▲', { buttonStyle: ButtonStyleMode.TEXTUAL })
-        .width(120)
+        .width(48)
         .height(20)
-        .fontSize(16)
+        .fontSize(12)
         .borderRadius(VKeyRadius)
-        .fontColor('#444')
+        .fontColor('#888')
         .padding({ left: VKeyPadding, right: VKeyPadding })
         
         .onClick(() => {
@@ -278,8 +283,9 @@ export default struct WebTerminal {
         })
     }
     .width('100%')
-    .height(24)
+    .height(22)
     .justifyContent(FlexAlign.Center)
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 
   @Builder
@@ -347,6 +353,9 @@ export default struct WebTerminal {
         .margin({ left: 5, right: 5 })
       }
     }
+    .width('100%')
+    .padding({ top: 4, bottom: 4 })
+    .backgroundColor('#E6000000')
   }
 
   async saveShowVirtKey() {
@@ -359,7 +368,10 @@ export default struct WebTerminal {
     }
     setTimeout(() => {
       this.webviewController.runJavaScript('exports.fit()')
-    }, 200)
+    }, 80)
+    setTimeout(() => {
+      this.webviewController.runJavaScript('exports.fit()')
+    }, 280)
   }
 
   private toggleCtrl(): void {
@@ -405,8 +417,8 @@ export default struct WebTerminal {
     })
     const vmStatus = AppStorage.get(appOption.currentEmulatorStatus) as string | undefined
     if (vmStatus === 'ABNORMAL') {
-      const message = this.getUIContext().getHostContext()?.resourceManager.getStringByNameSync('pm_status_qmp_connect_failed')
-        ?? 'Failed to connect to QMP (please restart app)'
+      const message = this.getUIContext().getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime')
+        ?? 'VM failed to start: QEMU runtime library missing'
       const text = util.TextEncoder.create('utf-8').encodeInto('\r\n' + message + '\r\n')
       const base64 = new util.Base64Helper().encodeToStringSync(text)
       this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`)

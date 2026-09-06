@@ -30,8 +30,8 @@ const defaultRootfs: RootFilesystem = {
 const defaultEmulator: Emulator = {
   id: 'rootfs_aarch64',
   name: '默认模拟器',
-  cpu: 2,
-  memory: 1024,
+  cpu: 4,
+  memory: 2048,
   init: '/init',
   portMapping: [],
   rootVda: '/dev/sda',

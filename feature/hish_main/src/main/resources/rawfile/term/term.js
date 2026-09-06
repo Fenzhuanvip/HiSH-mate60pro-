@@ -154,6 +154,7 @@ function createTerminal() {
         scrollback: 1500,
         fastScroll: true,
         drawBoldText: true,
+        disableStdin: false,
     };
 
     term = new Terminal(options);
@@ -177,7 +178,6 @@ window.onload = function () {
     const maxRetries = 10;
 
     function initialize() {
-        // Disable WebGL as per user request (Compatibility Mode)
         let shouldEnableWebGL = true;
 
         // Check if native is ready
@@ -385,7 +385,7 @@ function setupEventListeners() {
 
     // 4. Handle Window Resize
     window.addEventListener('resize', () => {
-        setTimeout(() => fitAddon.fit(), 30);
+        setTimeout(() => exports.fit(), 30);
     });
 
     // 5. Prevent default browser behaviors that might interfere
@@ -467,9 +467,10 @@ exports.write = (data, applicationMode) => {
 
 exports.writeBase64 = (base64Data, applicationMode) => {
     try {
-        let binaryString = atob(base64Data);
-        const uint8 = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
+        const binaryString = atob(base64Data);
+        const len = binaryString.length;
+        const uint8 = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
             uint8[i] = binaryString.charCodeAt(i);
         }
         term.write(uint8);
@@ -496,9 +497,23 @@ exports.copy = () => {
     return term.getSelection();
 };
 
+exports.fit = () => {
+    if (!term) {
+        return;
+    }
+    try {
+        fitAddon.fit();
+        if (term.cols < 2 || term.rows < 2) {
+            term.resize(80, 24);
+        }
+    } catch (e) {
+        console.warn('exports.fit failed', e);
+    }
+};
+
 exports.setFontSize = (size) => {
     term.options.fontSize = size;
-    fitAddon.fit();
+    exports.fit();
 };
 
 exports.setFontFamily = (family) => {

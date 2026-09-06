@@ -1,7 +1,7 @@
 {
   "name": "phone",
   "version": "1.0.0",
-  "description": "HiSH phone entry (no JIT)",
+  "description": "HiSH phone entry (JIT enabled, Mate 60 Pro+)",
   "main": "",
   "author": "",
   "license": "",
