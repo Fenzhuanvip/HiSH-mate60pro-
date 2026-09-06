@@ -1,9 +1,8 @@
-name: Build HAP
+name: Build HAP (Phone Only)
 
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -20,13 +19,10 @@ jobs:
             clang lld llvm make
 
       - name: Clone Linux kernel v6.12
-        run: |
-          git clone --depth=1 -b v6.12 https://github.com/torvalds/linux linux
+        run: git clone --depth=1 -b v6.12 https://github.com/torvalds/linux linux
 
       - name: Download kernel config
-        run: |
-          cd linux
-          curl -fsSL https://raw.githubusercontent.com/harmoninux/linux-config/refs/heads/master/arm64_virt > .config
+        run: cd linux && curl -fsSL https://raw.githubusercontent.com/harmoninux/linux-config/refs/heads/master/arm64_virt > .config
 
       - name: Build kernel
         run: |
@@ -49,13 +45,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          apt-get update
-          apt-get install -y cmake autotools-dev autoconf automake \
-            libtool pkg-config python3 python3-pip flex bison gettext texinfo
-          pip3 install --upgrade meson ninja
-
       - name: Build QEMU and dependencies (aarch64)
         working-directory: deps
         env:
@@ -63,14 +52,6 @@ jobs:
         run: |
           set -x
           make aarch64 2>&1 | tee qemu-build.log
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qemu-build-log
-          path: deps/qemu-build.log
-          retention-days: 7
 
       - name: Upload QEMU libs artifact
         uses: actions/upload-artifact@v4
@@ -142,23 +123,21 @@ jobs:
           path: feature/hish_main/src/main/resources/rawfile/vm/
 
       - name: Rename kernel file
-        run: |
-          mv feature/hish_main/src/main/resources/rawfile/vm/Image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
+        run: mv feature/hish_main/src/main/resources/rawfile/vm/Image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
 
       - name: Prepare build profile
-        run: |
-          cp build-profile.template.json5 build-profile.json5
+        run: cp build-profile.template.json5 build-profile.json5
 
       - name: Install dependencies
-        run: |
-          ohpm install --all
+        run: ohpm install --all
 
       - name: Build phone HAP (debug)
         run: |
           hvigorw clean --no-daemon
           hvigorw assembleHap \
             --mode module \
-            -p product=default \
+            -p product=phone \
+            -p module=phone \
             -p buildMode=debug \
             --no-daemon 2>&1 | tee build.log
 
@@ -170,77 +149,12 @@ jobs:
             OUTPUT_DIR=$(find . -name "*.hap" -exec dirname {} \; | head -1)
           fi
           echo "output_path=$OUTPUT_DIR" >> $GITHUB_OUTPUT
-          echo "=== HAP files ==="
-          find . -name "*.hap" -type f 2>/dev/null || echo "No HAP found"
 
       - name: Upload HAP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: phone-debug-hap
+          name: phone-hap
           path: |
             ${{ steps.get_output.outputs.output_path }}/*.hap
             build.log
           retention-days: 30
-
-      - name: Upload build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          retention-days: 7
-
-  publish:
-    needs: build-hap
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Download Build Output
-        uses: actions/download-artifact@v4
-        with:
-          name: phone-debug-hap
-          path: ./build-output
-
-      - name: Sign HAP
-        id: sign_hap
-        if: env.SIGNING_CERT && env.SIGNING_PROFILE && env.SIGNING_KEY
-        env:
-          SIGNING_CERT: ${{ secrets.SIGNING_CERT }}
-          SIGNING_PROFILE: ${{ secrets.SIGNING_PROFILE }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        run: |
-          HAP_FILE=$(find ./build-output -name "*.hap" | head -1)
-          SIGNED_HAP="${HAP_FILE%.hap}-signed.hap"
-          java -jar /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar \
-            sign-app \
-            -keyAlias "hish_debug" \
-            -signAlg "SHA256withECDSA" \
-            -mode "localSign" \
-            -appCertFile "${SIGNING_CERT}" \
-            -profileFile "${SIGNING_PROFILE}" \
-            -inFile "$HAP_FILE" \
-            -keystoreFile "${SIGNING_KEY}" \
-            -outFile "$SIGNED_HAP" \
-            -keyPwd "${{ secrets.KEY_PASSWORD }}" \
-            -keystorePwd "${{ secrets.KEYSTORE_PASSWORD }}" \
-            -signCode "1"
-          echo "signed_hap=$SIGNED_HAP" >> $GITHUB_OUTPUT
-
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{ github.ref_name }}
-          files: |
-            ${{ steps.sign_hap.outcome == 'success' && steps.sign_hap.outputs.signed_hap || './build-output/*.hap' }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
