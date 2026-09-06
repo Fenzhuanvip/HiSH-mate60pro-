@@ -37,11 +37,13 @@ clean_libqemu:
 copy: output/.stamp
 
 output/.stamp: $(STAMP) Makefile
+	mkdir -p ../feature/hish_main/libs/$(OHOS_ABI)
 	rm -f ../feature/hish_main/libs/$(OHOS_ABI)/*
 	cp output/*.so ../feature/hish_main/libs/$(OHOS_ABI)/
 	cp output/*.so.* ../feature/hish_main/libs/$(OHOS_ABI)/
 	mkdir -p ../feature/hish_main/src/main/resources/rawfile/vm/keymaps
 	cp output/en-us ../feature/hish_main/src/main/resources/rawfile/vm/keymaps/
+	test -f ../feature/hish_main/libs/$(OHOS_ABI)/libqemu-system-aarch64.so
 	touch output/.stamp
 
 %/.stamp: %/Makefile

@@ -481,6 +481,10 @@
       "value": "Failed to connect to QMP (please restart app)"
     },
     {
+      "name": "vm_start_failed_qemu_runtime",
+      "value": "VM failed to start: QEMU runtime library missing, reinstall the HAP"
+    },
+    {
       "name": "pm_status_pausing",
       "value": "Pausing VM..."
     },

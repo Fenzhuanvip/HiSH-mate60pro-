@@ -412,7 +412,7 @@ export default class EntryAbility extends UIAbility {
     }
     try {
       const promptAction: PromptAction = uiContext.getPromptAction();
-      const message = uiContext.getHostContext()?.resourceManager.getStringByNameSync('pm_status_qmp_connect_failed');
+      const message = uiContext.getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime');
       promptAction.showToast({
         message,
         duration: 8000

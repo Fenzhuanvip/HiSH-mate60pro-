@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <string>
+#include <vector>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -50,6 +52,42 @@ std::string temp_buffer = "";
 
 typedef int (*QemuSystemEntry)(int, const char **);
 
+static std::string resolveNativeLibPath(const char *libName) {
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void *>(resolveNativeLibPath), &info) && info.dli_fname) {
+        std::string path = info.dli_fname;
+        std::vector<char> pathCopy(path.begin(), path.end());
+        pathCopy.push_back('\0');
+        char *dir = dirname(pathCopy.data());
+        if (dir != nullptr && dir[0] != '\0') {
+            return std::string(dir) + "/" + libName;
+        }
+    }
+    return libName;
+}
+
+static void *tryDlopenQemu(const char *libName) {
+    std::string fullPath = resolveNativeLibPath(libName);
+    OH_LOG_INFO(LOG_APP, "dlopen trying: %{public}s", fullPath.c_str());
+    void *handle = dlopen(fullPath.c_str(), RTLD_LAZY);
+    if (handle != nullptr) {
+        return handle;
+    }
+    const char *err = dlerror();
+    OH_LOG_ERROR(LOG_APP, "dlopen(%{public}s) failed: %{public}s", fullPath.c_str(), err ? err : "unknown");
+
+    if (fullPath != libName) {
+        OH_LOG_INFO(LOG_APP, "dlopen fallback: %{public}s", libName);
+        handle = dlopen(libName, RTLD_LAZY);
+        if (handle != nullptr) {
+            return handle;
+        }
+        err = dlerror();
+        OH_LOG_ERROR(LOG_APP, "dlopen(%{public}s) failed: %{public}s", libName, err ? err : "unknown");
+    }
+    return nullptr;
+}
+
 static QemuSystemEntry getQemuSystemEntry(bool supportJit) {
 
     static QemuSystemEntry qemuSystemEntry = nullptr;
@@ -58,28 +96,31 @@ static QemuSystemEntry getQemuSystemEntry(bool supportJit) {
         return qemuSystemEntry;
     }
 
-    // 根据设备类型选择 .so：phone 用 TCI，tablet/2in1 用 JIT
     void *libQemuHandle = nullptr;
 
     if (supportJit) {
-        // tablet/2in1: 直接加载 JIT 版本
         OH_LOG_INFO(LOG_APP, "Loading QEMU: libqemu-system-aarch64.so (JIT)");
-        libQemuHandle = dlopen("libqemu-system-aarch64.so", RTLD_LAZY);
+        libQemuHandle = tryDlopenQemu("libqemu-system-aarch64.so");
     } else {
-        // phone: 优先加载 TCI 版本，失败则回退到 JIT 版本
         OH_LOG_INFO(LOG_APP, "Loading QEMU: libqemu-system-aarch64-tci.so (TCI)");
-        libQemuHandle = dlopen("libqemu-system-aarch64-tci.so", RTLD_LAZY);
-        if (!libQemuHandle) {
-            OH_LOG_INFO(LOG_APP, "TCI load failed (errno=%{public}d), falling back to JIT", errno);
-            libQemuHandle = dlopen("libqemu-system-aarch64.so", RTLD_LAZY);
+        libQemuHandle = tryDlopenQemu("libqemu-system-aarch64-tci.so");
+        if (libQemuHandle == nullptr) {
+            OH_LOG_INFO(LOG_APP, "TCI load failed, falling back to JIT");
+            libQemuHandle = tryDlopenQemu("libqemu-system-aarch64.so");
         }
     }
 
-    if (!libQemuHandle) {
-        OH_LOG_INFO(LOG_APP, "Failed to load libqemu.so errno: %{public}d", errno);
+    if (libQemuHandle == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "Failed to load QEMU library");
+        return nullptr;
     }
 
     qemuSystemEntry = (QemuSystemEntry)dlsym(libQemuHandle, "qemu_system_entry");
+    if (qemuSystemEntry == nullptr) {
+        const char *err = dlerror();
+        OH_LOG_ERROR(LOG_APP, "dlsym(qemu_system_entry) failed: %{public}s", err ? err : "unknown");
+        return nullptr;
+    }
     OH_LOG_INFO(LOG_APP, "libqemu.so, handle: 0x%{public}p, entry: 0x%{public}p", libQemuHandle, qemuSystemEntry);
 
     return qemuSystemEntry;

@@ -477,6 +477,10 @@
       "value": "连接 QMP 失败 (请重启应用)"
     },
     {
+      "name": "vm_start_failed_qemu_runtime",
+      "value": "虚拟机启动失败：未找到 QEMU 运行库，请重新安装 HAP"
+    },
+    {
       "name": "pm_status_pausing",
       "value": "正在暂停虚拟机..."
     },
