@@ -32,7 +32,7 @@
         {
           "name": "default",
           "applyToProducts": [
-            "phone"
+            "default"
           ]
         }
       ]
