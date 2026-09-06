@@ -54,6 +54,9 @@ jobs:
   build-qemu:
     runs-on: ubuntu-latest
     container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -96,7 +99,7 @@ jobs:
           TOOL_HOME: /opt/harmonyos-tools/command-line-tools
         run: |
           set -euxo pipefail
-          make aarch64 2>&1 | tee qemu-build.log
+          make aarch64 2>&1 | tee "${GITHUB_WORKSPACE}/qemu-build.log"
 
       - name: Verify QEMU libs copied
         run: |
@@ -109,7 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qemu-build-log
-          path: deps/qemu-build.log
+          path: qemu-build.log
           retention-days: 7
 
       - name: Upload QEMU libs artifact
