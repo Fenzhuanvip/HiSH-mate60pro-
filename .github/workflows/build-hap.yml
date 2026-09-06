@@ -67,11 +67,22 @@ jobs:
             feature/hish_main/src/main/resources/rawfile/vm/keymaps/
             feature/hish_main/src/main/resources/rawfile/vm/efi-virtio.rom
           key: qemu-aarch64-${{ hashFiles('deps/**') }}
-          restore-keys: |
-            qemu-aarch64-
+
+      - name: Check cached QEMU libs
+        id: qemu-libs
+        run: |
+          if [ -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so ] && \
+             [ -f feature/hish_main/libs/arm64-v8a/libqemu-img.so ]; then
+            echo "hit=true" >> $GITHUB_OUTPUT
+            ls -lh feature/hish_main/libs/arm64-v8a/
+          else
+            echo "hit=false" >> $GITHUB_OUTPUT
+            echo "cached QEMU libs missing, will rebuild"
+            ls -la feature/hish_main/libs/arm64-v8a/ || true
+          fi
 
       - name: Build QEMU and dependencies (aarch64)
-        if: steps.cache-qemu.outputs.cache-hit != 'true'
+        if: steps.qemu-libs.outputs.hit != 'true'
         working-directory: deps
         env:
           TOOL_HOME: /opt/harmonyos-tools/command-line-tools
