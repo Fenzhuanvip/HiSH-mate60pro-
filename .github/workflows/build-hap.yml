@@ -11,7 +11,17 @@ jobs:
   build-kernel:
     runs-on: ubuntu-latest
     steps:
+      - name: Cache kernel build
+        id: cache-kernel
+        uses: actions/cache@v4
+        with:
+          path: linux/arch/arm64/boot/Image
+          key: kernel-v6.12-${{ hashFiles('**/arm64_virt') }}
+          restore-keys: |
+            kernel-v6.12-
+
       - name: Install build dependencies
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc bc bison flex libssl-dev \
@@ -19,12 +29,15 @@ jobs:
             clang lld llvm make
 
       - name: Clone Linux kernel v6.12
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: git clone --depth=1 -b v6.12 https://github.com/torvalds/linux linux
 
       - name: Download kernel config
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: cd linux && curl -fsSL https://raw.githubusercontent.com/harmoninux/linux-config/refs/heads/master/arm64_virt > .config
 
       - name: Build kernel
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: |
           cd linux
           export KCFLAGS='-march=armv8.5-a+crc+crypto+lse+rcpc+rng+sm4+sha3+dotprod+fp16 -mtune=neoverse-n1 -O2 -falign-functions=64 -fno-strict-aliasing -mllvm -vectorize-loops -mllvm -force-vector-width=2'
@@ -42,10 +55,24 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
     steps:
+      - name: Cache QEMU build
+        id: cache-qemu
+        uses: actions/cache@v4
+        with:
+          path: |
+            feature/hish_main/libs/arm64-v8a/
+            feature/hish_main/src/main/resources/rawfile/vm/keymaps/
+            feature/hish_main/src/main/resources/rawfile/vm/efi-virtio.rom
+          key: qemu-aarch64-${{ hashFiles('deps/**') }}
+          restore-keys: |
+            qemu-aarch64-
+
       - name: Checkout code
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
 
       - name: Build QEMU and dependencies (aarch64)
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         working-directory: deps
         env:
           TOOL_HOME: /opt/harmonyos-tools/command-line-tools
@@ -66,18 +93,30 @@ jobs:
   build-rootfs:
     runs-on: ubuntu-latest
     steps:
+      - name: Cache rootfs build
+        id: cache-rootfs
+        uses: actions/cache@v4
+        with:
+          path: rootfs_aarch64.qcow2
+          key: rootfs-alpine3.22-${{ hashFiles('**/alpine-minirootfs*') }}
+          restore-keys: |
+            rootfs-alpine3.22-
+
       - name: Install tools
+        if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-utils e2fsprogs
 
       - name: Download Alpine minirootfs
+        if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
           wget -q https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.1-aarch64.tar.gz
           mkdir alpine
           tar xzf alpine-minirootfs-3.22.1-aarch64.tar.gz -C alpine
 
       - name: Create rootfs image
+        if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
           qemu-img create -f raw rootfs.img 8G
           mkfs.ext4 rootfs.img
@@ -124,6 +163,17 @@ jobs:
 
       - name: Rename kernel file
         run: mv feature/hish_main/src/main/resources/rawfile/vm/Image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
+
+      - name: Cache ohpm dependencies
+        id: cache-ohpm
+        uses: actions/cache@v4
+        with:
+          path: |
+            oh_modules
+            **/oh_modules
+          key: ohpm-${{ hashFiles('oh-package-lock.json5') }}
+          restore-keys: |
+            ohpm-
 
       - name: Prepare build profile
         run: cp build-profile.template.json5 build-profile.json5
