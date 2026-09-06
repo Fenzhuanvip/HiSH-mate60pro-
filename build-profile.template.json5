@@ -3,7 +3,7 @@
     "signingConfigs": [],
     "products": [
       {
-        "name": "phone",
+        "name": "default",
         "signingConfig": "default",
         "compatibleSdkVersion": "5.0.1(13)",
         "runtimeOS": "HarmonyOS",
