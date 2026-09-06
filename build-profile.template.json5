@@ -3,7 +3,7 @@
     "signingConfigs": [],
     "products": [
       {
-        "name": "default",
+        "name": "phone",
         "signingConfig": "default",
         "compatibleSdkVersion": "5.0.1(13)",
         "runtimeOS": "HarmonyOS",
@@ -17,7 +17,7 @@
     ],
     "buildModeSet": [
       {
-        "name": "debug",
+        "name": "debug"
       },
       {
         "name": "release"
@@ -26,25 +26,13 @@
   },
   "modules": [
     {
-      "name": "tablet",
-      "srcPath": "./product/tablet",
-      "targets": [
-        {
-          "name": "default",
-          "applyToProducts": [
-            "default"
-          ]
-        }
-      ]
-    },
-    {
       "name": "phone",
       "srcPath": "./product/phone",
       "targets": [
         {
           "name": "default",
           "applyToProducts": [
-            "default"
+            "phone"
           ]
         }
       ]
