@@ -2,7 +2,7 @@ import { Emulator } from '../model/Emulator';
 import readQcow2VirtualSize from '../lib/readQcow2VirtualSize';
 import appOption from '../model/appOption';
 import { util } from '@kit.ArkTS';
-import { ImmersiveButtonModifier } from '../lib/immersiveButton';
+
 
 @Component
 export default struct EmulatorItem {
@@ -19,7 +19,7 @@ export default struct EmulatorItem {
   @Require onImageManage: (item: Emulator) => void
   @State storageSize: number = 0
   filesDir = this.getUIContext().getHostContext()!!.getApplicationContext().filesDir
-  immersiveButton: ImmersiveButtonModifier = new ImmersiveButtonModifier()
+  
 
   aboutToAppear(): void {
     const rootfsPath = this.emulator.rootFilesystem
