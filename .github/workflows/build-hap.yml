@@ -81,13 +81,21 @@ jobs:
             ls -la feature/hish_main/libs/arm64-v8a/ || true
           fi
 
+      - name: Install QEMU build dependencies
+        if: steps.qemu-libs.outputs.hit != 'true'
+        run: |
+          apt-get update
+          apt-get install -y cmake autotools-dev autoconf automake \
+            libtool pkg-config python3 python3-pip flex bison gettext texinfo
+          pip3 install --upgrade meson ninja
+
       - name: Build QEMU and dependencies (aarch64)
         if: steps.qemu-libs.outputs.hit != 'true'
         working-directory: deps
         env:
           TOOL_HOME: /opt/harmonyos-tools/command-line-tools
         run: |
-          set -x
+          set -euxo pipefail
           make aarch64 2>&1 | tee qemu-build.log
 
       - name: Verify QEMU libs copied
