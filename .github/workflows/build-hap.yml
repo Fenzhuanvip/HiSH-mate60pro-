@@ -186,7 +186,7 @@ jobs:
           hvigorw clean --no-daemon
           hvigorw assembleHap \
             --mode module \
-            -p product=phone \
+            -p product=default \
             -p buildMode=debug \
             --no-daemon 2>&1 | tee build.log
 
