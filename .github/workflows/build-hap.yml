@@ -187,7 +187,6 @@ jobs:
           hvigorw assembleHap \
             --mode module \
             -p product=phone \
-            -p module=phone \
             -p buildMode=debug \
             --no-daemon 2>&1 | tee build.log
 
