@@ -1,5 +1,7 @@
 include ../utils/Makefrag
 
+.ONESHELL:
+
 export CFLAGS := $(CFLAGS) -fPIC
 
 SOURCE_URL = https://cairographics.org/releases/pixman-0.42.2.tar.gz
