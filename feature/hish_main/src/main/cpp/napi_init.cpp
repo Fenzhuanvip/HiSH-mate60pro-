@@ -895,87 +895,129 @@ std::string convert_to_hex(const uint8_t *buffer, int r) {
     return hex;
 }
 
-void send_data_to_callback(const std::string &hex, napi_threadsafe_function callback) {
-    data_buffer *pbuf = new data_buffer{.buf = new char[hex.length()], .size = (size_t)hex.length()};
-    memcpy(pbuf->buf, &hex[0], hex.length());
+void send_data_to_callback(const uint8_t *data, size_t len, napi_threadsafe_function callback) {
+    if (len == 0) return;
+    data_buffer *pbuf = new data_buffer{.buf = new char[len], .size = len};
+    memcpy(pbuf->buf, data, len);
     napi_call_threadsafe_function(callback, pbuf, napi_tsfn_nonblocking);
 }
 
-void on_serial_data_received(const std::string &hex) {
-    if (hex.length() > 0) {
+void on_serial_data_received(const uint8_t *data, size_t len) {
+    if (len > 0) {
         std::lock_guard<std::mutex> lk(buffer_mtx);
         if (on_data_callback != nullptr) {
-            send_data_to_callback(hex, on_data_callback);
+            send_data_to_callback(data, len, on_data_callback);
         } else {
-            temp_buffer.append(hex);
+            temp_buffer.append(reinterpret_cast<const char *>(data), len);
         }
     }
 }
 
 void serial_output_worker(const char *unix_socket_path) {
 
+    // 第一阶段：等待 QEMU 创建 serial socket 文件（最多 15 秒）
+    const int kMaxWaitSeconds = 15;
+    int waitedMs = 0;
     while (true) {
         int acc = access(unix_socket_path, F_OK);
         if (acc == 0) {
             break;
         }
-        OH_LOG_INFO(LOG_APP, "serial unix socket not exist: %{public}s", unix_socket_path);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (waitedMs >= kMaxWaitSeconds * 1000) {
+            OH_LOG_ERROR(LOG_APP, "serial socket not created within %d seconds, QEMU likely failed to start. path=%{public}s",
+                         kMaxWaitSeconds, unix_socket_path);
+            return;  // QEMU 没起来，退出线程避免永远阻塞
+        }
+        OH_LOG_INFO(LOG_APP, "serial socket not exist yet (%d ms): %{public}s", waitedMs, unix_socket_path);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        waitedMs += 200;
     }
 
-    OH_LOG_INFO(LOG_APP, "serial unix socket found: %{public}s", unix_socket_path);
+    OH_LOG_INFO(LOG_APP, "serial socket found: %{public}s", unix_socket_path);
+
+    // 第二阶段：连接到 QEMU serial socket（带重试）
+    const int kMaxConnectAttempts = 10;
+    const int kConnectRetryMs = 500;
 
     struct sockaddr_un server_addr;
-    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (client_fd == -1) {
-        OH_LOG_INFO(LOG_APP, "Failed to create unix socket: %{public}d", errno);
-        return;
-    }
-
-    // Connect to server
     memset(&server_addr, 0, sizeof(struct sockaddr_un));
     server_addr.sun_family = AF_UNIX;
-    // P0-03修复: 验证路径长度，防止缓冲区溢出
+    // 验证路径长度，防止缓冲区溢出
     size_t path_len = strlen(unix_socket_path);
-    if (path_len >= sizeof(server_addr.sun_path))
-    {
-        OH_LOG_ERROR(LOG_APP, "Unix socket path too long: %{public}zu >= %{public}zu",
+    if (path_len >= sizeof(server_addr.sun_path)) {
+        OH_LOG_ERROR(LOG_APP, "Unix socket path too long: %zu >= %zu",
                      path_len, sizeof(server_addr.sun_path));
-        close(client_fd);
         return;
     }
     strncpy(server_addr.sun_path, unix_socket_path, sizeof(server_addr.sun_path) - 1);
 
-    if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == -1) {
-        OH_LOG_INFO(LOG_APP, "Failed to connect to unix socket: %{public}d", errno);
-        close(client_fd); // 修复：连接失败时关闭 fd
+    int client_fd = -1;
+    for (int attempt = 1; attempt <= kMaxConnectAttempts; attempt++) {
+        client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (client_fd == -1) {
+            OH_LOG_ERROR(LOG_APP, "Failed to create unix socket: %d", errno);
+            return;  // socket 创建失败是致命错误，不重试
+        }
+
+        if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == 0) {
+            break;  // 连接成功
+        }
+
+        OH_LOG_WARN(LOG_APP, "Connect serial socket failed (attempt %d/%d): errno=%d, will retry in %dms",
+                     attempt, kMaxConnectAttempts, errno, kConnectRetryMs);
+        close(client_fd);
+        client_fd = -1;
+
+        if (attempt < kMaxConnectAttempts) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kConnectRetryMs));
+        }
+    }
+
+    if (client_fd == -1) {
+        OH_LOG_ERROR(LOG_APP, "Failed to connect serial socket after %d attempts, giving up", kMaxConnectAttempts);
         return;
     }
 
     serial_input_fd = client_fd;
+    OH_LOG_INFO(LOG_APP, "Connected to serial socket: fd=%d", serial_input_fd);
 
-    OH_LOG_INFO(LOG_APP, "Connected to unix socket: %{public}d", serial_input_fd);
+    // 统计日志节流：避免每个 chunk 都打 hilog（TUI 输出密集时会严重卡顿）
+    static uint64_t chunkCount = 0;
+    uint8_t buffer[8192];
 
     while (true) {
 
         bool broken = false;
 
-        struct pollfd fds[2];
+        struct pollfd fds[1];
         fds[0].fd = client_fd;
         fds[0].events = POLLIN;
         int res = poll(fds, 1, 100);
 
-        uint8_t buffer[1024];
+        if (res < 0) {
+            // poll 出错，通常是 fd 被关闭或信号中断
+            if (errno == EINTR) {
+                continue;  // 信号中断，重试
+            }
+            OH_LOG_ERROR(LOG_APP, "poll failed: errno=%{public}d", errno);
+            break;
+        }
+
         for (int i = 0; i < res; i += 1) {
             int fd = fds[i].fd;
-            ssize_t r = read(fd, buffer, sizeof(buffer) - 1);
+            ssize_t r = read(fd, buffer, sizeof(buffer));
             if (r > 0) {
-                // pretty print
-                auto hex = convert_to_hex(buffer, r);
-                //  call callback registered by ArkTS
-                on_serial_data_received(hex);
-                OH_LOG_INFO(LOG_APP, "Received, data: %{public}s", hex.c_str());
+                // 直接发送原始字节给 ArkTS，不再做 \\xNN 转义（转义会破坏 TUI 转义序列）
+                on_serial_data_received(buffer, (size_t)r);
+                // 每 200 个 chunk 打一次概要日志，避免 I/O 瓶颈
+                if ((++chunkCount % 200) == 0) {
+                    OH_LOG_INFO(LOG_APP, "Serial rx chunk #%{public}llu, size=%{public}zd",
+                                (unsigned long long)chunkCount, r);
+                }
             } else if (r < 0) {
+                if (errno == EINTR || errno == EAGAIN) {
+                    continue;  // 可重试错误
+                }
                 OH_LOG_INFO(LOG_APP, "Program exited, %{public}ld %{public}d", r, errno);
                 broken = true;
             }
@@ -1080,13 +1122,24 @@ static napi_value startVM(napi_env env, napi_callback_info info) {
 
         int argc = argsVector.size();
 
+        OH_LOG_INFO(LOG_APP, "QEMU main thread starting, argc=%d, args[0]=%{public}s", argc, argv[0]);
+        for (int i = 0; i < argc; i++) {
+            OH_LOG_INFO(LOG_APP, "  argv[%d] = %{public}s", i, argv[i]);
+        }
+
         int status = qemuEntry(argc, argv);
 
         delete[] argv;
 
-        OH_LOG_INFO(LOG_APP, "qemuEntry exited with: %{public}d", status);
+        OH_LOG_ERROR(LOG_APP, "QEMU main thread exited, status=%d (%{public}s)", status,
+                     status == 0 ? "success" :
+                     status == 1 ? "general error" :
+                     status == 2 ? "invalid command line" :
+                     status == 127 ? "command not found (check QEMU lib)" :
+                     "unknown error code");
 
         if (on_shutdown_callback != nullptr) {
+            OH_LOG_INFO(LOG_APP, "Calling onShutdown callback");
             napi_call_threadsafe_function(on_shutdown_callback, nullptr, napi_tsfn_nonblocking);
         }
     });
@@ -1120,8 +1173,13 @@ static napi_value sendInput(napi_env env, napi_callback_info info) {
     }
 
     // P0-06修复: 将ret改为length
-    std::string hex = convert_to_hex(data, length);
-    OH_LOG_INFO(LOG_APP, "Send, data: %{public}s", hex.c_str());
+    // 仅在数据较短时打印概要，避免大段粘贴/输出时的日志 I/O 瓶颈
+    if (length <= 64) {
+        std::string hex = convert_to_hex(data, length);
+        OH_LOG_INFO(LOG_APP, "Send, data: %{public}s", hex.c_str());
+    } else {
+        OH_LOG_INFO(LOG_APP, "Send, len=%{public}zu", length);
+    }
 
     int written = 0;
     while (written < (int)length)
@@ -1154,7 +1212,8 @@ static napi_value onData(napi_env env, napi_callback_info info) {
     {
         std::lock_guard<std::mutex> lk(buffer_mtx);
         if (!temp_buffer.empty()) {
-            send_data_to_callback(temp_buffer, data_callback);
+            send_data_to_callback(reinterpret_cast<const uint8_t *>(temp_buffer.data()),
+                                  temp_buffer.size(), data_callback);
             temp_buffer.clear();
         }
         on_data_callback = data_callback;

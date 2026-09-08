@@ -171,6 +171,8 @@ export default class EntryAbility extends UIAbility {
 
     if (vmStarted) {
       AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'RUNNING')
+      // 异步验证 QMP socket 是否成功创建（QEMU 可能在启动后立即崩溃）
+      this.verifyQmpSocket(qmpUnixSocket)
     } else {
       AppStorage.set(appOption.currentRunningEmulator, undefined)
       AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'ABNORMAL')
@@ -178,6 +180,38 @@ export default class EntryAbility extends UIAbility {
     }
 
     return { portsSkipped: portUsed, vmStarted }
+  }
+
+  /**
+   * 验证 QMP socket 是否成功创建。
+   * QEMU 在独立线程中启动，startVm 返回 true 不代表 QEMU 真正运行成功。
+   * 通过检测 qmp_socket 文件是否出现来判断 QEMU 是否正常启动。
+   */
+  private verifyQmpSocket(qmpSocketPath: string): void {
+    const maxAttempts = 20  // 最多等待 10 秒 (20 * 500ms)
+    let attempt = 0
+
+    const check = (): void => {
+      attempt++
+      try {
+        if (fs.accessSync(qmpSocketPath, fs.AccessModeType.EXIST)) {
+          hilog.info(DOMAIN, 'testTag', 'QMP socket 已创建: %{public}s (attempt %{public}d)', qmpSocketPath, attempt)
+          return
+        }
+      } catch (e) {
+        // 文件不存在，继续等待
+      }
+
+      if (attempt >= maxAttempts) {
+        hilog.error(DOMAIN, 'testTag', 'QMP socket 未在超时时间内创建，QEMU 可能启动失败: %{public}s', qmpSocketPath)
+        AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'ABNORMAL')
+        return
+      }
+
+      setTimeout(check, 500)
+    }
+
+    setTimeout(check, 500)
   }
 
   private getEmulatorToStart() {
