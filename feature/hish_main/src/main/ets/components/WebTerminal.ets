@@ -48,6 +48,7 @@ export default struct WebTerminal {
   webviewController: WebviewController = new webview.WebviewController()
   utf8Decoder = util.TextDecoder.create('utf-8', { ignoreBOM: true })
   resizeTimeout?: number = undefined
+  areaChangeFitTimer?: number = undefined
   applicationMode: boolean = false
   
 
@@ -73,8 +74,8 @@ export default struct WebTerminal {
             let board = pasteboard.getSystemPasteboard();
             const data = await board.getData()
             const text = data.getPrimaryText()
-            const array = util.TextEncoder.create().encodeInto(text)
-            const base64 = new util.Base64Helper().encodeToStringSync(array)
+            const array = this.utf8Encoder.encodeInto(text)
+            const base64 = this.base64Helper.encodeToStringSync(array)
             webController.runJavaScript(`exports.paste(atob('${base64}'))`)
           }
         })
@@ -94,9 +95,10 @@ export default struct WebTerminal {
 
   /**
    * @param appCode code used in application mode
+   * @param keyName identifier for modifier handling (e.g. 'UP', 'TAB')
    */
   @Builder
-  buildVKey(name: string, value: string, appCode?: string) {
+  buildVKey(name: string, value: string, appCode?: string, keyName?: string) {
     Button(name, { buttonStyle: ButtonStyleMode.TEXTUAL })
       .height(VKeyHeight)
       .width(VKeyWidth)
@@ -108,9 +110,9 @@ export default struct WebTerminal {
       
       .onClick(() => {
         if (this.applicationMode && appCode) {
-          this.sendInput(appCode);
+          this.sendInput(appCode, keyName);
         } else {
-          this.sendInput(value)
+          this.sendInput(value, keyName)
         }
       })
   }
@@ -252,16 +254,26 @@ export default struct WebTerminal {
           .backgroundColor('#000')
           .width('100%')
           .layoutWeight(1)
+          .onAreaChange(() => {
+            // WebView 尺寸变化时（如隐藏/显示虚拟键）自动重新 fit
+            if (this.areaChangeFitTimer !== undefined) {
+              clearTimeout(this.areaChangeFitTimer)
+            }
+            this.areaChangeFitTimer = setTimeout(() => {
+              this.areaChangeFitTimer = undefined
+              this.webviewController.runJavaScript('exports.fit()')
+            }, 60)
+          })
           .bindContextMenu(this.contextMenu(this.webviewController), ResponseType.RightClick)
         if (this.virtKeyEnabled && this.showVirtKey) {
           this.buildVirtualKeys()
+        } else if (this.virtKeyEnabled && !this.showVirtKey) {
+          // 放在 Column 内而非 Stack 叠加，避免遮挡终端最后一行
+          this.buildShowVirtualKeysButton()
         }
       }
       .width('100%')
       .height('100%')
-      if (this.virtKeyEnabled && !this.showVirtKey) {
-        this.buildShowVirtualKeysButton()
-      }
     }
     .width('100%')
     .height('100%')
@@ -324,13 +336,13 @@ export default struct WebTerminal {
         Row() {
           this.buildVKey('ESC', NormalKeySequences.ESC);
           this.toggleFnKey('FN', () => this.toggleFn());
-          this.buildVKey('/', '/', '/');
+          this.buildVKey('HOME', NormalKeySequences.HOME, NormalKeySequences.HOME_APP, 'HOME');
 
           Row().layoutWeight(1);
 
           this.buildVKey('PGUP', NormalKeySequences.PGUP);
           this.toggleShiftKey('SHIFT', () => this.toggleShift());
-          this.buildVKey('↑', NormalKeySequences.UP, NormalKeySequences.UP_APP);
+          this.buildVKey('↑', NormalKeySequences.UP, NormalKeySequences.UP_APP, 'UP');
           this.buildVKey('ENTER', '\r');
 
           this.settingsButton();
@@ -338,16 +350,16 @@ export default struct WebTerminal {
         .margin({ left: 5, right: 5 })
 
         Row() {
-          this.buildVKey('TAB', NormalKeySequences.TAB);
+          this.buildVKey('TAB', NormalKeySequences.TAB, NormalKeySequences.TAB, 'TAB');
           this.toggleCtrlKey('CTRL', () => this.toggleCtrl());
-          this.buildVKey('-', '-', '-');
+          this.buildVKey('END', NormalKeySequences.END, NormalKeySequences.END_APP, 'END');
 
           Row().layoutWeight(1);
 
           this.buildVKey('PGDN', NormalKeySequences.PGDN);
-          this.buildVKey('←', NormalKeySequences.LEFT, NormalKeySequences.LEFT_APP);
-          this.buildVKey('↓', NormalKeySequences.DOWN, NormalKeySequences.DOWN_APP);
-          this.buildVKey('→', NormalKeySequences.RIGHT, NormalKeySequences.RIGHT_APP);
+          this.buildVKey('←', NormalKeySequences.LEFT, NormalKeySequences.LEFT_APP, 'LEFT');
+          this.buildVKey('↓', NormalKeySequences.DOWN, NormalKeySequences.DOWN_APP, 'DOWN');
+          this.buildVKey('→', NormalKeySequences.RIGHT, NormalKeySequences.RIGHT_APP, 'RIGHT');
           this.hideVKeyButton();
         }
         .margin({ left: 5, right: 5 })
@@ -366,12 +378,12 @@ export default struct WebTerminal {
         duration: 5000
       })
     }
-    setTimeout(() => {
-      this.webviewController.runJavaScript('exports.fit()')
-    }, 80)
-    setTimeout(() => {
-      this.webviewController.runJavaScript('exports.fit()')
-    }, 280)
+    // 隐藏/显示虚拟键后，WebView 尺寸变化由 onAreaChange 自动触发 fit
+    // 这里额外补几次 fit，确保 ArkUI 布局完全稳定后终端尺寸正确
+    const fit = () => this.webviewController.runJavaScript('exports.fit()')
+    setTimeout(fit, 80)
+    setTimeout(fit, 200)
+    setTimeout(fit, 400)
   }
 
   private toggleCtrl(): void {
@@ -387,20 +399,23 @@ export default struct WebTerminal {
   }
   //  ============== for javascript in ArkWeb ================
 
-  sendInput(data: string): void {
-    hilog.info(DOMAIN, 'WebTerminal', 'sendInput, data: %{public}s', data);
+  sendInput(data: string, keyName?: string): void {
+    // 高频路径：避免每个按键都打 hilog，仅在调试构建时输出
+    if (data.length <= 8) {
+      hilog.debug(DOMAIN, 'WebTerminal', 'sendInput, len=%{public}d', data.length);
+    }
 
-    const modifierResult = applyVirtualKeyModifiers(data, this.ctrlPressed, this.shiftPressed)
+    const modifierResult = applyVirtualKeyModifiers(data, this.ctrlPressed, this.shiftPressed, keyName)
     data = modifierResult.data
 
     if (modifierResult.ctrlConverted) {
-      hilog.info(DOMAIN, 'WebTerminal', 'sendInput with Ctrl, converted to control char');
+      hilog.debug(DOMAIN, 'WebTerminal', 'sendInput with Ctrl, converted to control char');
     }
     if (modifierResult.shouldResetCtrl) {
       this.toggleCtrl()
     }
     if (modifierResult.shiftConverted) {
-      hilog.info(DOMAIN, 'WebTerminal', 'sendInput with Shift, converted to: %{public}s', data);
+      hilog.debug(DOMAIN, 'WebTerminal', 'sendInput with Shift, converted');
     }
 
     let buffer = stringToArrayBuffer(data, 'utf-8');
@@ -419,8 +434,8 @@ export default struct WebTerminal {
     if (vmStatus === 'ABNORMAL') {
       const message = this.getUIContext().getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime')
         ?? 'VM failed to start: QEMU runtime library missing'
-      const text = util.TextEncoder.create('utf-8').encodeInto('\r\n' + message + '\r\n')
-      const base64 = new util.Base64Helper().encodeToStringSync(text)
+      const text = this.utf8Encoder.encodeInto('\r\n' + message + '\r\n')
+      const base64 = this.base64Helper.encodeToStringSync(text)
       this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`)
     }
   }
@@ -438,6 +453,9 @@ export default struct WebTerminal {
   private pendingChunks: Uint8Array[] = [];
   private flushTimeoutID: number | undefined = undefined;
   private readonly FLUSH_INTERVAL = 8;
+  // 复用编解码器实例，避免高频 flush 时反复创建
+  private base64Helper = new util.Base64Helper();
+  private utf8Encoder = util.TextEncoder.create('utf-8');
 
   private onData(ab: ArrayBuffer) {
     try {
@@ -479,23 +497,20 @@ export default struct WebTerminal {
       this.pendingChunks = [];
 
       // 3. 检测清屏信号
-      // 检查合并后的数据是否包含 \x1b[H\x1b[J 的字面量转义序列
-      if (merged.length >= 12 &&
-        merged[0] === 0x5C && merged[1] === 0x78 && merged[2] === 0x31 && merged[3] === 0x62 && // \x1b
-        merged[4] === 0x5B && merged[5] === 0x48 && // [H
-        merged[6] === 0x5C && merged[7] === 0x78 && merged[8] === 0x31 && merged[9] === 0x62 && // \x1b
-        merged[10] === 0x5B && merged[11] === 0x4A // [J
+      // 现在数据是原始字节，检测真正的转义序列 ESC[H ESC[J (6 字节)
+      // \x1b[H 移动光标到左上角，\x1b[J 清屏（TUI 应用常用的清屏组合）
+      if (merged.length >= 6 &&
+        merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 && // ESC [ H
+        merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A    // ESC [ J
       ) {
-        const clearCmd = '\\x1b[3J';
-        const encoder = util.TextEncoder.create('utf-8');
-        const clearBytes = encoder.encodeInto(clearCmd);
-        const clearBase64 = new util.Base64Helper().encodeToStringSync(clearBytes);
+        const clearCmd = '\x1b[3J';
+        const clearBytes = this.utf8Encoder.encodeInto(clearCmd);
+        const clearBase64 = this.base64Helper.encodeToStringSync(clearBytes);
         this.webviewController.runJavaScript(`exports.writeBase64("${clearBase64}", ${this.applicationMode})`);
       }
 
       // 4. 发送合并后的数据
-      const base64Helper = new util.Base64Helper();
-      const base64 = base64Helper.encodeToStringSync(merged);
+      const base64 = this.base64Helper.encodeToStringSync(merged);
       this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`);
 
     } catch (e) {

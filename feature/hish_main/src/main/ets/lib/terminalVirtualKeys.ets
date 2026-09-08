@@ -55,9 +55,11 @@ export interface NormalKeySequencesMap {
   TAB: string
   PGUP: string
   HOME: string
+  HOME_APP: string
   UP: string
   UP_APP: string
   END: string
+  END_APP: string
   PGDN: string
   LEFT: string
   LEFT_APP: string
@@ -72,9 +74,11 @@ export const NormalKeySequences: NormalKeySequencesMap = {
   TAB: '\t',
   PGUP: '\x1b[5~',
   HOME: '\x1b[H',
+  HOME_APP: '\x1b[1~',
   UP: '\x1b[A',
   UP_APP: '\x1bOA',
   END: '\x1b[F',
+  END_APP: '\x1b[4~',
   PGDN: '\x1b[6~',
   LEFT: '\x1b[D',
   LEFT_APP: '\x1bOD',
@@ -84,6 +88,20 @@ export const NormalKeySequences: NormalKeySequencesMap = {
   RIGHT_APP: '\x1bOC'
 }
 
+// 带修饰键的方向键序列（xterm 风格），用于 TUI 应用的选择/跳转
+export const ModifiedArrowSequences = {
+  SHIFT_UP: '\x1b[1;2A',
+  SHIFT_DOWN: '\x1b[1;2B',
+  SHIFT_RIGHT: '\x1b[1;2C',
+  SHIFT_LEFT: '\x1b[1;2D',
+  CTRL_UP: '\x1b[1;5A',
+  CTRL_DOWN: '\x1b[1;5B',
+  CTRL_RIGHT: '\x1b[1;5C',
+  CTRL_LEFT: '\x1b[1;5D',
+  SHIFT_TAB: '\x1b[Z',
+  CTRL_TAB: '\x1b[1;5Z'
+}
+
 export interface InputModifierResult {
   data: string
   shouldResetCtrl: boolean
@@ -91,12 +109,43 @@ export interface InputModifierResult {
   shiftConverted: boolean
 }
 
-export function applyVirtualKeyModifiers(data: string, ctrlPressed: boolean, shiftPressed: boolean): InputModifierResult {
+/**
+ * 应用 Ctrl/Shift 修饰键到输入数据。
+ * @param data 原始按键数据
+ * @param ctrlPressed Ctrl 是否按下
+ * @param shiftPressed Shift 是否按下
+ * @param keyName 可选的按键标识，用于方向键/Tab 等多字节序列的修饰键处理
+ */
+export function applyVirtualKeyModifiers(data: string, ctrlPressed: boolean, shiftPressed: boolean,
+  keyName?: string): InputModifierResult {
   let output = data
   let ctrlConverted = false
   let shiftConverted = false
   let shouldResetCtrl = false
 
+  // 多字节控制序列（方向键、Tab、Home/End 等）的修饰键处理
+  if (keyName) {
+    const upperKey = keyName.toUpperCase()
+    const isArrow = upperKey === 'UP' || upperKey === 'DOWN' || upperKey === 'LEFT' || upperKey === 'RIGHT'
+
+    if (ctrlPressed && isArrow) {
+      output = ModifiedArrowSequences['CTRL_' + upperKey] || output
+      ctrlConverted = true
+      shouldResetCtrl = true
+    } else if (shiftPressed && isArrow) {
+      output = ModifiedArrowSequences['SHIFT_' + upperKey] || output
+      shiftConverted = true
+    } else if (ctrlPressed && upperKey === 'TAB') {
+      output = ModifiedArrowSequences.CTRL_TAB
+      ctrlConverted = true
+      shouldResetCtrl = true
+    } else if (shiftPressed && upperKey === 'TAB') {
+      output = ModifiedArrowSequences.SHIFT_TAB
+      shiftConverted = true
+    }
+  }
+
+  // 单字符的 Ctrl/Shift 处理（字母键）
   if (ctrlPressed && output.length === 1) {
     const char = output.charAt(0)
     if (char >= 'a' && char <= 'z') {

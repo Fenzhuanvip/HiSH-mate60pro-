@@ -895,19 +895,20 @@ std::string convert_to_hex(const uint8_t *buffer, int r) {
     return hex;
 }
 
-void send_data_to_callback(const std::string &hex, napi_threadsafe_function callback) {
-    data_buffer *pbuf = new data_buffer{.buf = new char[hex.length()], .size = (size_t)hex.length()};
-    memcpy(pbuf->buf, &hex[0], hex.length());
+void send_data_to_callback(const uint8_t *data, size_t len, napi_threadsafe_function callback) {
+    if (len == 0) return;
+    data_buffer *pbuf = new data_buffer{.buf = new char[len], .size = len};
+    memcpy(pbuf->buf, data, len);
     napi_call_threadsafe_function(callback, pbuf, napi_tsfn_nonblocking);
 }
 
-void on_serial_data_received(const std::string &hex) {
-    if (hex.length() > 0) {
+void on_serial_data_received(const uint8_t *data, size_t len) {
+    if (len > 0) {
         std::lock_guard<std::mutex> lk(buffer_mtx);
         if (on_data_callback != nullptr) {
-            send_data_to_callback(hex, on_data_callback);
+            send_data_to_callback(data, len, on_data_callback);
         } else {
-            temp_buffer.append(hex);
+            temp_buffer.append(reinterpret_cast<const char *>(data), len);
         }
     }
 }
@@ -956,25 +957,30 @@ void serial_output_worker(const char *unix_socket_path) {
 
     OH_LOG_INFO(LOG_APP, "Connected to unix socket: %{public}d", serial_input_fd);
 
+    // 统计日志节流：避免每个 chunk 都打 hilog（TUI 输出密集时会严重卡顿）
+    static uint64_t chunkCount = 0;
+    uint8_t buffer[8192];
+
     while (true) {
 
         bool broken = false;
 
-        struct pollfd fds[2];
+        struct pollfd fds[1];
         fds[0].fd = client_fd;
         fds[0].events = POLLIN;
         int res = poll(fds, 1, 100);
 
-        uint8_t buffer[1024];
         for (int i = 0; i < res; i += 1) {
             int fd = fds[i].fd;
-            ssize_t r = read(fd, buffer, sizeof(buffer) - 1);
+            ssize_t r = read(fd, buffer, sizeof(buffer));
             if (r > 0) {
-                // pretty print
-                auto hex = convert_to_hex(buffer, r);
-                //  call callback registered by ArkTS
-                on_serial_data_received(hex);
-                OH_LOG_INFO(LOG_APP, "Received, data: %{public}s", hex.c_str());
+                // 直接发送原始字节给 ArkTS，不再做 \\xNN 转义（转义会破坏 TUI 转义序列）
+                on_serial_data_received(buffer, (size_t)r);
+                // 每 200 个 chunk 打一次概要日志，避免 I/O 瓶颈
+                if ((++chunkCount % 200) == 0) {
+                    OH_LOG_INFO(LOG_APP, "Serial rx chunk #%{public}llu, size=%{public}zd",
+                                (unsigned long long)chunkCount, r);
+                }
             } else if (r < 0) {
                 OH_LOG_INFO(LOG_APP, "Program exited, %{public}ld %{public}d", r, errno);
                 broken = true;
@@ -1120,8 +1126,13 @@ static napi_value sendInput(napi_env env, napi_callback_info info) {
     }
 
     // P0-06修复: 将ret改为length
-    std::string hex = convert_to_hex(data, length);
-    OH_LOG_INFO(LOG_APP, "Send, data: %{public}s", hex.c_str());
+    // 仅在数据较短时打印概要，避免大段粘贴/输出时的日志 I/O 瓶颈
+    if (length <= 64) {
+        std::string hex = convert_to_hex(data, length);
+        OH_LOG_INFO(LOG_APP, "Send, data: %{public}s", hex.c_str());
+    } else {
+        OH_LOG_INFO(LOG_APP, "Send, len=%{public}zu", length);
+    }
 
     int written = 0;
     while (written < (int)length)
@@ -1154,7 +1165,8 @@ static napi_value onData(napi_env env, napi_callback_info info) {
     {
         std::lock_guard<std::mutex> lk(buffer_mtx);
         if (!temp_buffer.empty()) {
-            send_data_to_callback(temp_buffer, data_callback);
+            send_data_to_callback(reinterpret_cast<const uint8_t *>(temp_buffer.data()),
+                                  temp_buffer.size(), data_callback);
             temp_buffer.clear();
         }
         on_data_callback = data_callback;
