@@ -46,9 +46,12 @@ jobs:
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
+        working-directory: linux/arch/arm64/boot
         with:
           name: kernel-aarch64
-          path: linux/arch/arm64/boot/Image
+          # 从 boot 目录上传纯文件名 Image，这样 download-artifact 下载后
+          # 直接落在目标目录里，不会带 linux/arch/arm64/ 嵌套路径
+          path: Image
           retention-days: 30
 
   build-qemu:
