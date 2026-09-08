@@ -44,14 +44,17 @@ jobs:
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 olddefconfig
           env KCFLAGS="$KCFLAGS" make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 -j$(nproc)
 
+      - name: Copy kernel Image to workspace root
+        run: cp linux/arch/arm64/boot/Image kernel_image
+
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
-        working-directory: linux/arch/arm64/boot
         with:
           name: kernel-aarch64
-          # 从 boot 目录上传纯文件名 Image，这样 download-artifact 下载后
-          # 直接落在目标目录里，不会带 linux/arch/arm64/ 嵌套路径
-          path: Image
+          # 从 workspace root 上传，纯文件名 kernel_image
+          # download-artifact 下载到 vm/ 后为 vm/kernel_image
+          # 后面 Rename kernel 步骤改名成 kernel_aarch64
+          path: kernel_image
           retention-days: 30
 
   build-qemu:
@@ -228,7 +231,7 @@ jobs:
           path: feature/hish_main/src/main/resources/rawfile/vm/
 
       - name: Rename kernel file
-        run: mv feature/hish_main/src/main/resources/rawfile/vm/Image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
+        run: mv feature/hish_main/src/main/resources/rawfile/vm/kernel_image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
 
       - name: Cache ohpm dependencies
         id: cache-ohpm
