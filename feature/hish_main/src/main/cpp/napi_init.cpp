@@ -970,6 +970,15 @@ void serial_output_worker(const char *unix_socket_path) {
         fds[0].events = POLLIN;
         int res = poll(fds, 1, 100);
 
+        if (res < 0) {
+            // poll 出错，通常是 fd 被关闭或信号中断
+            if (errno == EINTR) {
+                continue;  // 信号中断，重试
+            }
+            OH_LOG_ERROR(LOG_APP, "poll failed: errno=%{public}d", errno);
+            break;
+        }
+
         for (int i = 0; i < res; i += 1) {
             int fd = fds[i].fd;
             ssize_t r = read(fd, buffer, sizeof(buffer));
@@ -982,6 +991,9 @@ void serial_output_worker(const char *unix_socket_path) {
                                 (unsigned long long)chunkCount, r);
                 }
             } else if (r < 0) {
+                if (errno == EINTR || errno == EAGAIN) {
+                    continue;  // 可重试错误
+                }
                 OH_LOG_INFO(LOG_APP, "Program exited, %{public}ld %{public}d", r, errno);
                 broken = true;
             }
