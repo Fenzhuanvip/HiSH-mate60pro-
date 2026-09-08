@@ -291,22 +291,18 @@ jobs:
 
       - name: Verify QEMU so packed in HAP
         run: |
-          python3 - <<'PY'
-          import glob, zipfile, sys
-          haps = glob.glob('**/*.hap', recursive=True)
-          if not haps:
-              print('No HAP found', file=sys.stderr)
-              sys.exit(1)
-          hap = haps[0]
-          print('Checking', hap)
-          with zipfile.ZipFile(hap) as z:
-              names = z.namelist()
-          packed = [n for n in names if 'libqemu-system-aarch64.so' in n]
-          if not packed:
-              print('libqemu-system-aarch64.so missing from HAP', file=sys.stderr)
-              sys.exit(1)
-          print('\n'.join(packed))
-          PY
+          HAP_FILE=$(find . -name "*.hap" | head -1)
+          if [ -z "$HAP_FILE" ]; then
+            echo "No HAP found" >&2
+            exit 1
+          fi
+          echo "Checking $HAP_FILE"
+          if unzip -l "$HAP_FILE" | grep -q "libqemu-system-aarch64.so"; then
+            unzip -l "$HAP_FILE" | grep "libqemu-system-aarch64.so"
+          else
+            echo "libqemu-system-aarch64.so missing from HAP" >&2
+            exit 1
+          fi
 
       - name: Upload build log
         if: always()
