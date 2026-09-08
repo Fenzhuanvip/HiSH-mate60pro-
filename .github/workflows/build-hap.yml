@@ -92,12 +92,37 @@ jobs:
 
       - name: Install QEMU build dependencies
         if: steps.qemu-libs.outputs.hit != 'true'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          PIP_BREAK_SYSTEM_PACKAGES: "1"
         run: |
+          set -euxo pipefail
           apt-get update
           apt-get install -y cmake autotools-dev autoconf automake \
-            libtool pkg-config flex bison gettext texinfo
+            libtool pkg-config flex bison gettext texinfo curl ca-certificates
           python3 --version
-          python3 -m pip install --upgrade meson ninja
+          python3 -c 'import sys; print(sys.executable); raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+            || {
+              apt-get install -y software-properties-common gnupg
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y python3.12 python3.12-venv python3.12-dev
+              ln -sfn "$(command -v python3.12)" /usr/local/bin/python3
+              hash -r
+              python3 --version
+            }
+          if ! python3 -m pip --version; then
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+            python3 /tmp/get-pip.py
+          fi
+          python3 -m pip install --upgrade pip meson ninja
+          python3 -m pip show meson ninja
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          hash -r
+          command -v python3
+          command -v meson
+          meson --version
 
       - name: Build QEMU and dependencies (aarch64)
         if: steps.qemu-libs.outputs.hit != 'true'
