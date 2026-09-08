@@ -20,9 +20,6 @@ interface VmOptions {
   qgaUnixSocket: string
   sharedFolderReadonly: boolean
   init: string,
-  vncEnabled: boolean
-  vncPortMode: string  // 'local' | 'lan'
-  vncPort: number      // VNC port number (e.g. 5900)
 }
 
 interface RequiredFile {
@@ -100,13 +97,6 @@ function startVm(options: VmOptions): boolean {
     ["-fsdev", "local,security_model=mapped-file,id=fsdev1,path=/storage/Users/currentUser", "-device",
       "virtio-9p-pci,id=fs1,fsdev=fsdev1,mount_tag=usershare"]
 
-  const vnc: string[] = options.vncEnabled ? [
-    '-vnc', `${options.vncPortMode === 'lan' ? '0.0.0.0' : '127.0.0.1'}:${options.vncPort - 5900}`,
-    '-device', 'virtio-gpu-pci',
-    '-device', 'virtio-keyboard-pci',
-    '-device', 'virtio-tablet-pci'
-  ] : []
-
   const args = [
     'qemu-system-aarch64',
     ...basic,
@@ -119,7 +109,6 @@ function startVm(options: VmOptions): boolean {
     ...kernelParam,
     ...monitor,
     ...qga,
-    ...vnc,
     ...sharedUserFolder
   ]
 

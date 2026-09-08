@@ -33,11 +33,6 @@
 #define LOG_DOMAIN 0x3300
 #define LOG_TAG "HiSH"
 
-// VNC Utils (key mapping)
-#include "include/utils.hpp"
-// VNC NAPI bindings (separate module)
-#include "include/napi_vnc.hpp"
-
 struct data_buffer {
     char *buf;
     size_t size;
@@ -878,9 +873,6 @@ static napi_value optimizeImage(napi_env env, napi_callback_info info)
 }
 
 
-// ================== VNC functions are in napi_vnc.cpp ==================
-
-
 static void call_on_data_callback(napi_env env, napi_value js_callback, void *context, void *data) {
 
     data_buffer *buffer = static_cast<data_buffer *>(data);
@@ -1358,9 +1350,6 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"optimizeImage", nullptr, optimizeImage, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
-
-    // Register VNC NAPI functions from napi_vnc.cpp
-    registerVncFunctions(env, exports);
 
     return exports;
 }

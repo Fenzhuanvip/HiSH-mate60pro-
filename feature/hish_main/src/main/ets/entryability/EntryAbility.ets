@@ -20,27 +20,6 @@ interface StartResult {
   vmStarted: boolean
 }
 
-/**
- * 获取一个未被占用的随机端口 (用于 VNC WebSocket)
- * @param min 最小端口号 (包含)
- * @param max 最大端口号 (包含)
- * @returns 可用端口号，如果找不到则返回 undefined
- */
-function getFreeVncPort(min: number, max: number): number | undefined {
-  const range = max - min + 1;
-  const maxAttempts = 100; // 最大尝试次数
-
-  for (let i = 0; i < maxAttempts; i++) {
-    const port = min + Math.floor(Math.random() * range);
-    if (!napi.checkPortUsed(port)) {
-      return port;
-    }
-  }
-
-  hilog.warn(DOMAIN, 'testTag', 'Could not find a free VNC port after %{public}d attempts', maxAttempts);
-  return undefined;
-}
-
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
@@ -145,11 +124,6 @@ export default class EntryAbility extends UIAbility {
 
     AppStorage.setOrCreate(appOption.currentRunningEmulator, emulatorToStart.id)
 
-    // 读取 VNC 启用配置
-    const vncEnabled = AppStorage.get<boolean>(appOption.vncEnabled)!!
-    const vncPortMode = AppStorage.get<string>(appOption.vncPortMode) ?? 'local'
-    const vncPort = AppStorage.get<number>(appOption.vncPort) ?? 5900
-
     const vmStarted = startVm({
       baseDir: vmBaseDir,
       cpu: cpuCount,
@@ -164,9 +138,6 @@ export default class EntryAbility extends UIAbility {
       init,
       qmpUnixSocket,
       qgaUnixSocket,
-      vncEnabled,
-      vncPortMode,
-      vncPort
     })
 
     if (vmStarted) {
@@ -272,12 +243,6 @@ export default class EntryAbility extends UIAbility {
     const terminalUserFonts =
       JSON.parse(await appPref.get(appOption.terminalUserFonts, '[]') as string) as UserFont[];
     AppStorage.setOrCreate(appOption.terminalUserFonts, terminalUserFonts);
-    const vncEnabled = await appPref.get(appOption.vncEnabled, false) as boolean;
-    AppStorage.setOrCreate(appOption.vncEnabled, vncEnabled);
-    const vncPortMode = await appPref.get(appOption.vncPortMode, 'local') as string;
-    AppStorage.setOrCreate(appOption.vncPortMode, vncPortMode);
-    const vncPort = await appPref.get(appOption.vncPort, 5900) as number;
-    AppStorage.setOrCreate(appOption.vncPort, vncPort);
 
     const defaultStart = await appPref.get(appOption.defaultStartEmulator, undefined) as (string | undefined)
     AppStorage.setOrCreate(appOption.defaultStartEmulator, defaultStart || defaultEmulator.id)

@@ -261,42 +261,6 @@
       "value": "终端背景"
     },
     {
-      "name": "setting_vnc",
-      "value": "VNC"
-    },
-    {
-      "name": "setting_enable_vnc",
-      "value": "启用VNC"
-    },
-    {
-      "name": "setting_vnc_restart_hint",
-      "value": "下一次重新打开软件生效"
-    },
-    {
-      "name": "setting_vnc_port_mode",
-      "value": "VNC监听模式"
-    },
-    {
-      "name": "setting_vnc_port_mode_desc",
-      "value": "本地 或 局域网"
-    },
-    {
-      "name": "setting_vnc_port_mode_local",
-      "value": "本地"
-    },
-    {
-      "name": "setting_vnc_port_mode_lan",
-      "value": "局域网"
-    },
-    {
-      "name": "setting_vnc_port",
-      "value": "VNC端口"
-    },
-    {
-      "name": "setting_vnc_port_desc",
-      "value": "端口范围5900-5999，重启后生效"
-    },
-    {
       "name": "root_outdated_prompt",
       "value": "当前模拟器的root路径为%s，可能导致Linux无法正常启动\n可以前往模拟器管理中修改模拟器的root设置，例如修改为/dev/sda"
     },
@@ -673,20 +637,12 @@
       "value": "电源管理"
     },
     {
-      "name": "vnc_service_not_started",
-      "value": "VNC 服务未启动"
-    },
-    {
       "name": "btn_add",
       "value": "添加"
     },
     {
       "name": "edit_emulator_title",
       "value": "编辑模拟器"
-    },
-    {
-      "name": "vnc_console_title",
-      "value": "VNC控制台"
     },
     {
       "name": "guide_basic_title",
