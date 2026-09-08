@@ -7,7 +7,7 @@ import fs from '@ohos.file.fs';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import napi from 'libhish_main.so';
 import appOption, { CursorShape, UserFont } from '../model/appOption'
-import { startVm } from '../lib/startVm';
+import { startVm, VmStartResult } from '../lib/startVm';
 import { defaultEmulator, defaultRootfs, Emulator, RootFilesystem } from '../model/Emulator';
 import { util } from '@kit.ArkTS';
 import { fileUri, picker } from '@kit.CoreFileKit';
@@ -18,6 +18,7 @@ const DOMAIN = 0x0000;
 interface StartResult {
   portsSkipped: number[]
   vmStarted: boolean
+  startDetail?: VmStartResult
 }
 
 export default class EntryAbility extends UIAbility {
@@ -69,7 +70,7 @@ export default class EntryAbility extends UIAbility {
 
       this.promptRootVdaMessage(uiContext)
       this.promptPortUsedMessage(uiContext, result.portsSkipped)
-      this.promptVmStartFailedMessage(uiContext, result.vmStarted)
+      this.promptVmStartFailedMessage(uiContext, result.vmStarted, result.startDetail)
       this.startRunInBackground(uiContext)
     });
   }
@@ -124,7 +125,7 @@ export default class EntryAbility extends UIAbility {
 
     AppStorage.setOrCreate(appOption.currentRunningEmulator, emulatorToStart.id)
 
-    const vmStarted = startVm({
+    const startResult: VmStartResult = startVm({
       baseDir: vmBaseDir,
       cpu: cpuCount,
       memory: memSize,
@@ -140,6 +141,8 @@ export default class EntryAbility extends UIAbility {
       qgaUnixSocket,
     })
 
+    const vmStarted = startResult.success
+
     if (vmStarted) {
       AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'RUNNING')
       // 异步验证 QMP socket 是否成功创建（QEMU 可能在启动后立即崩溃）
@@ -147,10 +150,14 @@ export default class EntryAbility extends UIAbility {
     } else {
       AppStorage.set(appOption.currentRunningEmulator, undefined)
       AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'ABNORMAL')
-      hilog.error(DOMAIN, 'testTag', 'VM failed to start: qemu runtime is unavailable')
+      // 把详细错误存入 AppStorage，供 WebTerminal 等 UI 组件展示
+      AppStorage.setOrCreate('vmStartError', detail?.errorMessage ?? 'Unknown error')
+      AppStorage.setOrCreate('vmStartErrorCode', detail?.errorCode ?? 'UNKNOWN')
+      hilog.error(DOMAIN, 'testTag', 'VM failed to start: code=%{public}s, msg=%{public}s',
+        startResult.errorCode, startResult.errorMessage)
     }
 
-    return { portsSkipped: portUsed, vmStarted }
+    return { portsSkipped: portUsed, vmStarted, startDetail: startResult }
   }
 
   /**
@@ -405,17 +412,32 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
-  private promptVmStartFailedMessage(uiContext: UIContext, vmStarted: boolean) {
+  private promptVmStartFailedMessage(uiContext: UIContext, vmStarted: boolean, detail?: VmStartResult) {
     if (vmStarted) {
       return
     }
     try {
-      const promptAction: PromptAction = uiContext.getPromptAction();
-      const message = uiContext.getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime');
+      const promptAction: PromptAction = uiContext.getPromptAction()
+      let message: string
+
+      if (detail?.errorMessage) {
+        // 使用 startVm 返回的详细错误信息
+        // Toast 长度有限，截取前 3 行
+        const lines = detail.errorMessage.split('\n').slice(0, 3).join(' | ')
+        message = `[VM启动失败] ${detail.errorCode ?? ''} ${lines}`
+      } else {
+        // fallback 到默认文案
+        message = uiContext.getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime')
+          ?? 'VM failed to start: QEMU runtime library missing, reinstall the HAP'
+      }
+
+      hilog.error(DOMAIN, 'testTag', 'promptVmStartFailedMessage: code=%{public}s, msg=%{public}s',
+        detail?.errorCode ?? 'unknown', detail?.errorMessage ?? message)
+
       promptAction.showToast({
         message,
         duration: 8000
-      });
+      })
     } catch (e) {
       hilog.error(DOMAIN, 'testTag', 'showToast error: %{public}s', JSON.stringify(e));
     }

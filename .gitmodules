@@ -1,0 +1,3 @@
+[submodule "feature/hish_main/src/main/cpp/libvncserver"]
+	path = feature/hish_main/src/main/cpp/libvncserver
+	url = https://github.com/harmoninux/libvncserver.git

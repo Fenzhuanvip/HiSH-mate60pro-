@@ -417,9 +417,22 @@ export default struct WebTerminal {
     })
     const vmStatus = AppStorage.get(appOption.currentEmulatorStatus) as string | undefined
     if (vmStatus === 'ABNORMAL') {
-      const message = this.getUIContext().getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime')
-        ?? 'VM failed to start: QEMU runtime library missing'
-      const text = this.utf8Encoder.encodeInto('\r\n' + message + '\r\n')
+      // 优先使用 AppStorage 中的详细错误信息
+      const detailedError = AppStorage.get('vmStartError') as string | undefined
+      const errorCode = AppStorage.get('vmStartErrorCode') as string | undefined
+      let message: string
+      if (detailedError && detailedError !== 'Unknown error') {
+        // 在终端中展示格式化的诊断信息
+        message = `\r\n========== VM 启动失败诊断 ==========\r\n` +
+          `错误代码: ${errorCode ?? 'UNKNOWN'}\r\n` +
+          `详细信息:\r\n${detailedError}\r\n` +
+          `=====================================\r\n` +
+          `请查看应用日志(hilog)搜索 "startVm" 或 "preflightQemuLibs" 获取完整上下文\r\n`
+      } else {
+        message = this.getUIContext().getHostContext()?.resourceManager.getStringByNameSync('vm_start_failed_qemu_runtime')
+          ?? 'VM failed to start: QEMU runtime library missing'
+      }
+      const text = this.utf8Encoder.encodeInto(message)
       const base64 = this.base64Helper.encodeToStringSync(text)
       this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`)
     }

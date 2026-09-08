@@ -59,7 +59,7 @@ jobs:
         run: |
           if command -v clang-format &>/dev/null; then
             echo "=== Checking C++ formatting ==="
-            for file in $(find feature/hish_main/src/main/cpp -name "*.cpp" -o -name "*.hpp" -o -name "*.h" 2>/dev/null); do
+            for file in $(find feature/hish_main/src/main/cpp -path "*/libvncserver" -prune -o -name "*.cpp" -print -o -name "*.hpp" -print -o -name "*.h" -print 2>/dev/null); do
               DIFF=$(clang-format -style=file "$file" 2>/dev/null | diff - "$file" || true)
               if [ -n "$DIFF" ]; then
                 echo "::warning file=$file::Code formatting differs from clang-format style"
