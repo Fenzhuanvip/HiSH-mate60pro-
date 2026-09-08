@@ -68,6 +68,18 @@ static std::string resolveNativeLibPath(const char *libName) {
 
 static void *tryDlopenQemu(const char *libName) {
     std::string fullPath = resolveNativeLibPath(libName);
+    // Prepend the lib directory to LD_LIBRARY_PATH so the dynamic linker
+    // can find sibling deps (e.g. libslirp.so.0 when loading libqemu-system-aarch64.so)
+    {
+        std::string libDir = fullPath.substr(0, fullPath.rfind('/'));
+        const char *existing = getenv("LD_LIBRARY_PATH");
+        std::string newPath = libDir;
+        if (existing && existing[0] != '\0') {
+            newPath = libDir + ":" + existing;
+        }
+        setenv("LD_LIBRARY_PATH", newPath.c_str(), 1);
+        OH_LOG_INFO(LOG_APP, "Set LD_LIBRARY_PATH=%{public}s", newPath.c_str());
+    }
     OH_LOG_INFO(LOG_APP, "dlopen trying: %{public}s", fullPath.c_str());
     void *handle = dlopen(fullPath.c_str(), RTLD_LAZY);
     if (handle != nullptr) {
@@ -141,12 +153,32 @@ static QemuImgEntry getQemuImgEntry() {
         return qemuImgEntry;
     }
 
-    const char *libQemuImgPath = "libqemu-img.so";
-    libQemuImgHandle = dlopen(libQemuImgPath, RTLD_LAZY);
+    // Ensure LD_LIBRARY_PATH includes our lib dir (set by tryDlopenQemu earlier,
+    // but also do it here in case getQemuImgEntry is called first)
+    {
+        std::string fullPath = resolveNativeLibPath("libqemu-img.so");
+        std::string libDir = fullPath.substr(0, fullPath.rfind('/'));
+        const char *existing = getenv("LD_LIBRARY_PATH");
+        std::string newPath = libDir;
+        if (existing && existing[0] != '\0') {
+            newPath = libDir + ":" + existing;
+        }
+        setenv("LD_LIBRARY_PATH", newPath.c_str(), 1);
+    }
+
+    std::string libQemuImgPath = resolveNativeLibPath("libqemu-img.so");
+    libQemuImgHandle = dlopen(libQemuImgPath.c_str(), RTLD_LAZY);
 
     if (!libQemuImgHandle) {
-        OH_LOG_ERROR(LOG_APP, "Failed to load libqemu-img.so errno: %{public}d", errno);
-        return nullptr;
+        const char *err = dlerror();
+        OH_LOG_ERROR(LOG_APP, "Failed to load %{public}s: %{public}s", libQemuImgPath.c_str(), err ? err : "unknown");
+        // fallback: try bare name
+        libQemuImgHandle = dlopen("libqemu-img.so", RTLD_LAZY);
+        if (!libQemuImgHandle) {
+            err = dlerror();
+            OH_LOG_ERROR(LOG_APP, "Failed to load libqemu-img.so: %{public}s", err ? err : "unknown");
+            return nullptr;
+        }
     }
 
     qemuImgEntry = (QemuImgEntry)dlsym(libQemuImgHandle, "qemu_img_entry");
