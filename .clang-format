@@ -1,0 +1,40 @@
+# 基于 LLVM 风格，匹配 HiSH 项目现有 C++ 代码风格
+BasedOnStyle: LLVM
+
+# 缩进：4 空格，不用 Tab
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# 不重排/排序 include（项目手动维护顺序）
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# 指针对齐：char *buf（星号靠右，与类型间有空格）
+PointerAlignment: Right
+
+# 列宽不限制，保留手动换行（项目有大量长行）
+ColumnLimit: 0
+
+# 大括号紧跟（K&R 风格，匹配项目主流代码）
+BreakBeforeBraces: Attach
+
+# 访问修饰符与 class 平级
+AccessModifierOffset: -2
+
+# 短函数/短 if 不合并到一行
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+
+# 命名空间不缩进
+NamespaceIndentation: None
+
+# 参数/对齐
+AlignAfterOpenBracket: Align
+BinPackParameters: true
+BinPackArguments: true
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
