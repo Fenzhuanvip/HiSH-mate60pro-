@@ -915,47 +915,71 @@ void on_serial_data_received(const uint8_t *data, size_t len) {
 
 void serial_output_worker(const char *unix_socket_path) {
 
+    // 第一阶段：等待 QEMU 创建 serial socket 文件（最多 15 秒）
+    const int kMaxWaitSeconds = 15;
+    int waitedMs = 0;
     while (true) {
         int acc = access(unix_socket_path, F_OK);
         if (acc == 0) {
             break;
         }
-        OH_LOG_INFO(LOG_APP, "serial unix socket not exist: %{public}s", unix_socket_path);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (waitedMs >= kMaxWaitSeconds * 1000) {
+            OH_LOG_ERROR(LOG_APP, "serial socket not created within %d seconds, QEMU likely failed to start. path=%{public}s",
+                         kMaxWaitSeconds, unix_socket_path);
+            return;  // QEMU 没起来，退出线程避免永远阻塞
+        }
+        OH_LOG_INFO(LOG_APP, "serial socket not exist yet (%d ms): %{public}s", waitedMs, unix_socket_path);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        waitedMs += 200;
     }
 
-    OH_LOG_INFO(LOG_APP, "serial unix socket found: %{public}s", unix_socket_path);
+    OH_LOG_INFO(LOG_APP, "serial socket found: %{public}s", unix_socket_path);
+
+    // 第二阶段：连接到 QEMU serial socket（带重试）
+    const int kMaxConnectAttempts = 10;
+    const int kConnectRetryMs = 500;
 
     struct sockaddr_un server_addr;
-    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (client_fd == -1) {
-        OH_LOG_INFO(LOG_APP, "Failed to create unix socket: %{public}d", errno);
-        return;
-    }
-
-    // Connect to server
     memset(&server_addr, 0, sizeof(struct sockaddr_un));
     server_addr.sun_family = AF_UNIX;
-    // P0-03修复: 验证路径长度，防止缓冲区溢出
+    // 验证路径长度，防止缓冲区溢出
     size_t path_len = strlen(unix_socket_path);
-    if (path_len >= sizeof(server_addr.sun_path))
-    {
-        OH_LOG_ERROR(LOG_APP, "Unix socket path too long: %{public}zu >= %{public}zu",
+    if (path_len >= sizeof(server_addr.sun_path)) {
+        OH_LOG_ERROR(LOG_APP, "Unix socket path too long: %zu >= %zu",
                      path_len, sizeof(server_addr.sun_path));
-        close(client_fd);
         return;
     }
     strncpy(server_addr.sun_path, unix_socket_path, sizeof(server_addr.sun_path) - 1);
 
-    if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == -1) {
-        OH_LOG_INFO(LOG_APP, "Failed to connect to unix socket: %{public}d", errno);
-        close(client_fd); // 修复：连接失败时关闭 fd
+    int client_fd = -1;
+    for (int attempt = 1; attempt <= kMaxConnectAttempts; attempt++) {
+        client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (client_fd == -1) {
+            OH_LOG_ERROR(LOG_APP, "Failed to create unix socket: %d", errno);
+            return;  // socket 创建失败是致命错误，不重试
+        }
+
+        if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == 0) {
+            break;  // 连接成功
+        }
+
+        OH_LOG_WARN(LOG_APP, "Connect serial socket failed (attempt %d/%d): errno=%d, will retry in %dms",
+                     attempt, kMaxConnectAttempts, errno, kConnectRetryMs);
+        close(client_fd);
+        client_fd = -1;
+
+        if (attempt < kMaxConnectAttempts) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kConnectRetryMs));
+        }
+    }
+
+    if (client_fd == -1) {
+        OH_LOG_ERROR(LOG_APP, "Failed to connect serial socket after %d attempts, giving up", kMaxConnectAttempts);
         return;
     }
 
     serial_input_fd = client_fd;
-
-    OH_LOG_INFO(LOG_APP, "Connected to unix socket: %{public}d", serial_input_fd);
+    OH_LOG_INFO(LOG_APP, "Connected to serial socket: fd=%d", serial_input_fd);
 
     // 统计日志节流：避免每个 chunk 都打 hilog（TUI 输出密集时会严重卡顿）
     static uint64_t chunkCount = 0;
@@ -1098,13 +1122,24 @@ static napi_value startVM(napi_env env, napi_callback_info info) {
 
         int argc = argsVector.size();
 
+        OH_LOG_INFO(LOG_APP, "QEMU main thread starting, argc=%d, args[0]=%{public}s", argc, argv[0]);
+        for (int i = 0; i < argc; i++) {
+            OH_LOG_INFO(LOG_APP, "  argv[%d] = %{public}s", i, argv[i]);
+        }
+
         int status = qemuEntry(argc, argv);
 
         delete[] argv;
 
-        OH_LOG_INFO(LOG_APP, "qemuEntry exited with: %{public}d", status);
+        OH_LOG_ERROR(LOG_APP, "QEMU main thread exited, status=%d (%{public}s)", status,
+                     status == 0 ? "success" :
+                     status == 1 ? "general error" :
+                     status == 2 ? "invalid command line" :
+                     status == 127 ? "command not found (check QEMU lib)" :
+                     "unknown error code");
 
         if (on_shutdown_callback != nullptr) {
+            OH_LOG_INFO(LOG_APP, "Calling onShutdown callback");
             napi_call_threadsafe_function(on_shutdown_callback, nullptr, napi_tsfn_nonblocking);
         }
     });
