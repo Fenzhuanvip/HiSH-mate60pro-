@@ -224,8 +224,12 @@ jobs:
       - name: Place QEMU libs to correct path
         run: |
           # download-artifact strips common prefix, so libs land at ./libs/arm64-v8a/
-          # Move them to where the project expects them
-          if [ -d libs/arm64-v8a ] && [ ! -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so ]; then
+          # Copy to BOTH locations:
+          #   1. feature/hish_main/src/main/libs/arm64-v8a/  <- standard HarmonyOS HAR native lib dir
+          #   2. feature/hish_main/libs/arm64-v8a/            <- fallback (some hvigorw versions)
+          if [ -d libs/arm64-v8a ]; then
+            mkdir -p feature/hish_main/src/main/libs/arm64-v8a
+            cp -rv libs/arm64-v8a/* feature/hish_main/src/main/libs/arm64-v8a/
             mkdir -p feature/hish_main/libs/arm64-v8a
             cp -rv libs/arm64-v8a/* feature/hish_main/libs/arm64-v8a/
           fi
@@ -240,9 +244,10 @@ jobs:
 
       - name: Verify QEMU runtime libs
         run: |
-          test -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so
-          test -f feature/hish_main/libs/arm64-v8a/libqemu-img.so
-          ls -lh feature/hish_main/libs/arm64-v8a/
+          test -f feature/hish_main/src/main/libs/arm64-v8a/libqemu-system-aarch64.so
+          test -f feature/hish_main/src/main/libs/arm64-v8a/libqemu-img.so
+          test -f feature/hish_main/src/main/libs/arm64-v8a/libslirp.so.0
+          ls -lh feature/hish_main/src/main/libs/arm64-v8a/
 
       - name: Download rootfs artifact
         uses: actions/download-artifact@v4
