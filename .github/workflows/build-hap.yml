@@ -223,6 +223,12 @@ jobs:
 
       - name: Verify QEMU runtime libs
         run: |
+          echo "=== Debug: find downloaded QEMU libs ==="
+          find . -name "libqemu*" -type f 2>/dev/null || true
+          echo "=== Debug: ls feature/hish_main/libs/ ==="
+          ls -laR feature/hish_main/libs/ 2>/dev/null || echo "libs/ dir not found"
+          echo "=== Debug: ls workspace root ==="
+          ls -la . 2>/dev/null || true
           test -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so
           test -f feature/hish_main/libs/arm64-v8a/libqemu-img.so
           ls -lh feature/hish_main/libs/arm64-v8a/
