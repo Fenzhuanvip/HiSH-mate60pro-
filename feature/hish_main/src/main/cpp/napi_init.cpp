@@ -133,7 +133,6 @@ static QemuSystemEntry getQemuSystemEntry(bool supportJit) {
     return qemuSystemEntry;
 }
 
-
 // 前向声明
 static std::string getString(napi_env env, napi_value value);
 
@@ -184,8 +183,7 @@ static QemuImgEntry getQemuImgEntry() {
 
 // QCOW2 文件头结构（简化版）
 // 参考: https://github.com/qemu/qemu/blob/master/docs/interop/qcow2.txt
-struct Qcow2Header
-{
+struct Qcow2Header {
     uint32_t magic;                   // 0-3: Magic number 'QFI\xfb'
     uint32_t version;                 // 4-7: Version (2 or 3)
     uint64_t backing_file_offset;     // 8-15
@@ -208,25 +206,21 @@ struct Qcow2Header
 };
 
 // 大端转小端（网络字节序转主机字节序）
-static uint32_t be32toh_manual(uint32_t val)
-{
+static uint32_t be32toh_manual(uint32_t val) {
     return ((val & 0xFF) << 24) | ((val & 0xFF00) << 8) |
            ((val & 0xFF0000) >> 8) | ((val & 0xFF000000) >> 24);
 }
 
-static uint64_t be64toh_manual(uint64_t val)
-{
+static uint64_t be64toh_manual(uint64_t val) {
     uint32_t low = (uint32_t)(val & 0xFFFFFFFF);
     uint32_t high = (uint32_t)(val >> 32);
     return ((uint64_t)be32toh_manual(low) << 32) | be32toh_manual(high);
 }
 
 // 直接从 QCOW2 文件头读取信息
-static std::string getQcow2Info(const std::string &imagePath)
-{
+static std::string getQcow2Info(const std::string &imagePath) {
     int fd = open(imagePath.c_str(), O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         // P1-11修复: 返回详细的错误信息
         int err = errno;
         OH_LOG_ERROR(LOG_APP, "Failed to open image file: %{public}s, errno: %{public}d (%{public}s)",
@@ -236,8 +230,7 @@ static std::string getQcow2Info(const std::string &imagePath)
 
     // 获取文件大小（实际磁盘占用）
     struct stat st;
-    if (fstat(fd, &st) < 0)
-    {
+    if (fstat(fd, &st) < 0) {
         close(fd);
         return "{\"error\": \"Failed to stat image file\"}";
     }
@@ -248,15 +241,13 @@ static std::string getQcow2Info(const std::string &imagePath)
     ssize_t bytesRead = read(fd, &header, sizeof(header));
     close(fd);
 
-    if (bytesRead < 72)
-    { // 至少需要读取到 v2 头部
+    if (bytesRead < 72) { // 至少需要读取到 v2 头部
         return "{\"error\": \"Failed to read QCOW2 header\"}";
     }
 
     // 检查 magic number
     uint32_t magic = be32toh_manual(header.magic);
-    if (magic != 0x514649FB)
-    { // 'QFI\xfb'
+    if (magic != 0x514649FB) { // 'QFI\xfb'
         return "{\"error\": \"Not a valid QCOW2 file\", \"magic\": " + std::to_string(magic) + "}";
     }
 
@@ -265,8 +256,7 @@ static std::string getQcow2Info(const std::string &imagePath)
     uint64_t virtual_size = be64toh_manual(header.size);
     uint32_t cluster_bits = be32toh_manual(header.cluster_bits);
     // P0-07修复: QCOW2规范要求 cluster_bits 在 9-21 范围内 (512B - 2MB clusters)
-    if (cluster_bits < 9 || cluster_bits > 21)
-    {
+    if (cluster_bits < 9 || cluster_bits > 21) {
         return "{\"error\": \"Invalid cluster_bits value\", \"cluster_bits\": " + std::to_string(cluster_bits) + "}";
     }
     // P1-09修复: 使用 64 位无符号整数计算 cluster_size，防止中间过程溢出
@@ -278,8 +268,7 @@ static std::string getQcow2Info(const std::string &imagePath)
     bool extended_l2 = false;
     uint32_t refcount_bits = 16; // 默认值
 
-    if (version >= 3 && bytesRead >= 104)
-    {
+    if (version >= 3 && bytesRead >= 104) {
         uint64_t compat_features = be64toh_manual(header.compatible_features);
         lazy_refcounts = (compat_features & 0x01) != 0; // bit 0: lazy refcounts
 
@@ -316,14 +305,12 @@ static std::string getQcow2Info(const std::string &imagePath)
 }
 
 // NAPI 函数：获取镜像信息（直接读取 QCOW2 头部，不调用 qemu-img）
-static napi_value getImageInfo(napi_env env, napi_callback_info info)
-{
+static napi_value getImageInfo(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 1)
-    {
+    if (argc < 1) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing image path argument\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -346,8 +333,7 @@ static napi_value getImageInfo(napi_env env, napi_callback_info info)
 // QCOW2 快照头部结构
 // 参考: https://github.com/qemu/qemu/blob/master/docs/interop/qcow2.txt
 #pragma pack(push, 1)
-struct QcowSnapshotHeader
-{
+struct QcowSnapshotHeader {
     uint64_t l1_table_offset; // 快照 L1 表偏移
     uint32_t l1_size;         // L1 表大小
     uint16_t id_str_size;     // ID 字符串长度
@@ -366,11 +352,9 @@ static bool qemu_img_called = false;
 static bool qemu_img_failed = false;
 
 // 读取 QCOW2 快照列表（直接解析文件，不调用 qemu-img）
-static std::string getSnapshotsFromFile(const std::string &imagePath)
-{
+static std::string getSnapshotsFromFile(const std::string &imagePath) {
     int fd = open(imagePath.c_str(), O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         return "{\"error\": \"Failed to open image file\"}";
     }
 
@@ -378,16 +362,14 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
     Qcow2Header header;
     ssize_t bytesRead = read(fd, &header, sizeof(header));
 
-    if (bytesRead < 72)
-    {
+    if (bytesRead < 72) {
         close(fd);
         return "{\"error\": \"Failed to read QCOW2 header\"}";
     }
 
     // 检查 magic number
     uint32_t magic = be32toh_manual(header.magic);
-    if (magic != 0x514649FB)
-    {
+    if (magic != 0x514649FB) {
         close(fd);
         return "{\"error\": \"Not a valid QCOW2 file\"}";
     }
@@ -399,15 +381,13 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
     OH_LOG_INFO(LOG_APP, "QCOW2: nb_snapshots=%{public}d, snapshots_offset=%{public}llu",
                 nb_snapshots, (unsigned long long)snapshots_offset);
 
-    if (nb_snapshots == 0)
-    {
+    if (nb_snapshots == 0) {
         close(fd);
         return "{\"snapshots\": []}";
     }
 
     // 跳转到快照表
-    if (lseek(fd, snapshots_offset, SEEK_SET) < 0)
-    {
+    if (lseek(fd, snapshots_offset, SEEK_SET) < 0) {
         close(fd);
         return "{\"error\": \"Failed to seek to snapshot table\"}";
     }
@@ -415,11 +395,9 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
     std::ostringstream json;
     json << "{\"snapshots\": [";
 
-    for (uint32_t i = 0; i < nb_snapshots; i++)
-    {
+    for (uint32_t i = 0; i < nb_snapshots; i++) {
         QcowSnapshotHeader snapHeader;
-        if (read(fd, &snapHeader, sizeof(snapHeader)) < (ssize_t)sizeof(snapHeader))
-        {
+        if (read(fd, &snapHeader, sizeof(snapHeader)) < (ssize_t)sizeof(snapHeader)) {
             break;
         }
 
@@ -431,8 +409,7 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
         uint32_t extra_data_size = be32toh_manual(snapHeader.extra_data_size);
 
         // 跳过额外数据（QCOW2 v3）
-        if (version >= 3 && extra_data_size > 0)
-        {
+        if (version >= 3 && extra_data_size > 0) {
             lseek(fd, extra_data_size, SEEK_CUR);
         }
 
@@ -440,27 +417,23 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
         const size_t MAX_SNAPSHOT_NAME_SIZE = 4096;
 
         // 读取 ID 字符串
-        if (id_str_size > MAX_SNAPSHOT_NAME_SIZE)
-        {
+        if (id_str_size > MAX_SNAPSHOT_NAME_SIZE) {
             OH_LOG_ERROR(LOG_APP, "Snapshot id_str_size too large: %{public}u", id_str_size);
             break;
         }
         std::string id_str(id_str_size, '\0');
-        if (id_str_size > 0 && read(fd, &id_str[0], id_str_size) != id_str_size)
-        {
+        if (id_str_size > 0 && read(fd, &id_str[0], id_str_size) != id_str_size) {
             OH_LOG_ERROR(LOG_APP, "Failed to read snapshot id");
             break;
         }
 
         // 读取名称
-        if (name_size > MAX_SNAPSHOT_NAME_SIZE)
-        {
+        if (name_size > MAX_SNAPSHOT_NAME_SIZE) {
             OH_LOG_ERROR(LOG_APP, "Snapshot name_size too large: %{public}u", name_size);
             break;
         }
         std::string name(name_size, '\0');
-        if (name_size > 0 && read(fd, &name[0], name_size) != name_size)
-        {
+        if (name_size > 0 && read(fd, &name[0], name_size) != name_size) {
             OH_LOG_ERROR(LOG_APP, "Failed to read snapshot name");
             break;
         }
@@ -468,8 +441,7 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
         // 跳过 padding（对齐到 8 字节）
         size_t header_size = sizeof(QcowSnapshotHeader) + extra_data_size + id_str_size + name_size;
         size_t padding = (8 - (header_size % 8)) % 8;
-        if (padding > 0)
-        {
+        if (padding > 0) {
             lseek(fd, padding, SEEK_CUR);
         }
 
@@ -506,14 +478,12 @@ static std::string getSnapshotsFromFile(const std::string &imagePath)
 }
 
 // NAPI 函数：获取快照列表
-static napi_value getSnapshots(napi_env env, napi_callback_info info)
-{
+static napi_value getSnapshots(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 1)
-    {
+    if (argc < 1) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing image path argument\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -537,16 +507,14 @@ static QemuImgEntry g_qemu_img_entry = nullptr;
 static void *g_qemu_lib_handle = nullptr;
 
 // 初始化 QEMU 库 (在父进程调用)
-static bool initQemuLibrary()
-{
+static bool initQemuLibrary() {
     if (g_qemu_img_entry != nullptr)
         return true;
 
     // 查找库路径
     std::string libPath = "libqemu-img.so";
     Dl_info info;
-    if (dladdr((void *)createSnapshot, &info) && info.dli_fname)
-    {
+    if (dladdr((void *)createSnapshot, &info) && info.dli_fname) {
         std::string path = info.dli_fname;
         std::vector<char> pathCopy(path.begin(), path.end());
         pathCopy.push_back('\0');
@@ -557,21 +525,18 @@ static bool initQemuLibrary()
     // 加载库
     // 使用 RTLD_GLOBAL 确保符号可见，RTLD_NOW 立即解析
     g_qemu_lib_handle = dlopen(libPath.c_str(), RTLD_LAZY | RTLD_LOCAL);
-    if (!g_qemu_lib_handle)
-    {
+    if (!g_qemu_lib_handle) {
         // 尝试默认路径
         g_qemu_lib_handle = dlopen("libqemu-img.so", RTLD_LAZY | RTLD_LOCAL);
     }
 
-    if (!g_qemu_lib_handle)
-    {
+    if (!g_qemu_lib_handle) {
         OH_LOG_ERROR(LOG_APP, "Failed to load libqemu-img.so: %{public}s", dlerror());
         return false;
     }
 
     g_qemu_img_entry = (QemuImgEntry)dlsym(g_qemu_lib_handle, "qemu_img_entry");
-    if (!g_qemu_img_entry)
-    {
+    if (!g_qemu_img_entry) {
         OH_LOG_ERROR(LOG_APP, "Failed to find qemu_img_entry symbol");
         dlclose(g_qemu_lib_handle);
         g_qemu_lib_handle = nullptr;
@@ -583,45 +548,38 @@ static bool initQemuLibrary()
 }
 
 // 执行 qemu-img 命令（使用 fork + 直接调用方式）
-static std::string executeQemuImgCommand(const std::vector<std::string> &args)
-{
+static std::string executeQemuImgCommand(const std::vector<std::string> &args) {
     // 确保库已加载
-    if (!initQemuLibrary())
-    {
+    if (!initQemuLibrary()) {
         return "{\"error\": \"Failed to load qemu-img library\"}";
     }
 
     int pipefd[2];
-    if (pipe(pipefd) == -1)
-    {
+    if (pipe(pipefd) == -1) {
         OH_LOG_ERROR(LOG_APP, "pipe failed: %{public}s", strerror(errno));
         return "{\"error\": \"pipe failed\"}";
     }
 
     pid_t pid = fork();
-    if (pid == -1)
-    {
+    if (pid == -1) {
         OH_LOG_ERROR(LOG_APP, "fork failed: %{public}s", strerror(errno));
         close(pipefd[0]);
         close(pipefd[1]);
         return "{\"error\": \"fork failed\"}";
     }
 
-    if (pid == 0)
-    {                     // Child process
+    if (pid == 0) {       // Child process
         close(pipefd[0]); // Close read end
 
         // Redirect stdout and stderr to pipe
-        if (dup2(pipefd[1], STDOUT_FILENO) == -1 || dup2(pipefd[1], STDERR_FILENO) == -1)
-        {
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1 || dup2(pipefd[1], STDERR_FILENO) == -1) {
             _exit(1);
         }
         close(pipefd[1]); // Close write end after dup
 
         // Prepare args
         std::vector<const char *> argv;
-        for (const auto &arg : args)
-        {
+        for (const auto &arg : args) {
             argv.push_back(arg.c_str());
         }
 
@@ -651,17 +609,14 @@ static std::string executeQemuImgCommand(const std::vector<std::string> &args)
         int ret = g_qemu_img_entry(argv.size(), argv.data());
 
         _exit(ret);
-    }
-    else
-    {                     // Parent process
+    } else {              // Parent process
         close(pipefd[1]); // Close write end
 
         // Read output
         std::string output;
         char buffer[1024];
         ssize_t bytesRead;
-        while ((bytesRead = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0)
-        {
+        while ((bytesRead = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
             buffer[bytesRead] = '\0';
             output += buffer;
         }
@@ -670,36 +625,46 @@ static std::string executeQemuImgCommand(const std::vector<std::string> &args)
         int status;
         waitpid(pid, &status, 0);
 
-        if (WIFEXITED(status))
-        {
+        if (WIFEXITED(status)) {
             int exit_code = WEXITSTATUS(status);
-            if (exit_code != 0)
-            {
+            if (exit_code != 0) {
                 OH_LOG_ERROR(LOG_APP, "qemu-img exited with code %{public}d, output: %{public}s", exit_code, output.c_str());
 
-                if (output.find("{") != 0)
-                {
+                if (output.find("{") != 0) {
                     std::string escaped;
-                    for (char c : output)
-                    {
+                    for (char c : output) {
                         switch (c) {
-                            case '"':  escaped += "\\\""; break;
-                            case '\\': escaped += "\\\\"; break;
-                            case '\n': escaped += "\\n";  break;
-                            case '\r': escaped += "\\r";  break;
-                            case '\t': escaped += "\\t";  break;
-                            case '\b': escaped += "\\b";  break;
-                            case '\f': escaped += "\\f";  break;
-                            default:
-                                if ((unsigned char)c < 32) {
-                                    // 其他不可见控制字符，转义为 \u00xx 格式
-                                    char temp[8];
-                                    snprintf(temp, sizeof(temp), "\\u%04x", (unsigned char)c);
-                                    escaped += temp;
-                                } else {
-                                    escaped += c;
-                                }
-                                break;
+                        case '"':
+                            escaped += "\\\"";
+                            break;
+                        case '\\':
+                            escaped += "\\\\";
+                            break;
+                        case '\n':
+                            escaped += "\\n";
+                            break;
+                        case '\r':
+                            escaped += "\\r";
+                            break;
+                        case '\t':
+                            escaped += "\\t";
+                            break;
+                        case '\b':
+                            escaped += "\\b";
+                            break;
+                        case '\f':
+                            escaped += "\\f";
+                            break;
+                        default:
+                            if ((unsigned char)c < 32) {
+                                // 其他不可见控制字符，转义为 \u00xx 格式
+                                char temp[8];
+                                snprintf(temp, sizeof(temp), "\\u%04x", (unsigned char)c);
+                                escaped += temp;
+                            } else {
+                                escaped += c;
+                            }
+                            break;
                         }
                     }
                     if (escaped.empty())
@@ -707,36 +672,27 @@ static std::string executeQemuImgCommand(const std::vector<std::string> &args)
                     return "{\"error\": \"" + escaped + "\"}";
                 }
             }
-        }
-        else if (WIFSIGNALED(status))
-        {
+        } else if (WIFSIGNALED(status)) {
             int sig = WTERMSIG(status);
             // Signal 40, 44, 89-92 are OHOS-specific or Real-Time signals triggered during qemu-img cleanup
             // These usually happen after the work is done, so we treat them as success.
             // Standard crash signals (SEGV, ABRT, etc.) are < 32.
-            if (sig >= 32)
-            {
+            if (sig >= 32) {
                 OH_LOG_INFO(LOG_APP, "qemu-img terminated with signal %{public}d (assumed benign cleanup issue)", sig);
                 // Continue to success path
-            }
-            else
-            {
+            } else {
                 OH_LOG_ERROR(LOG_APP, "qemu-img crashed with signal %{public}d", sig);
                 return "{\"error\": \"qemu-img crashed with signal " + std::to_string(sig) + "\"}";
             }
         }
 
-        if (output.empty())
-        {
+        if (output.empty()) {
             return "{\"success\": true}";
         }
 
-        if (output.find("{") == 0 || output.find("[") == 0)
-        {
+        if (output.find("{") == 0 || output.find("[") == 0) {
             return output;
-        }
-        else
-        {
+        } else {
             OH_LOG_WARN(LOG_APP, "qemu-img success but unexpected output: %{public}s", output.c_str());
             return "{\"success\": true, \"message\": \"" + output + "\"}";
         }
@@ -744,14 +700,12 @@ static std::string executeQemuImgCommand(const std::vector<std::string> &args)
 }
 
 // NAPI 函数：创建快照
-static napi_value createSnapshot(napi_env env, napi_callback_info info)
-{
+static napi_value createSnapshot(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 2)
-    {
+    if (argc < 2) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing arguments (imagePath, snapshotName)\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -771,14 +725,12 @@ static napi_value createSnapshot(napi_env env, napi_callback_info info)
 }
 
 // NAPI 函数：恢复快照
-static napi_value applySnapshot(napi_env env, napi_callback_info info)
-{
+static napi_value applySnapshot(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 2)
-    {
+    if (argc < 2) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing arguments (imagePath, snapshotName)\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -798,14 +750,12 @@ static napi_value applySnapshot(napi_env env, napi_callback_info info)
 }
 
 // NAPI 函数：删除快照
-static napi_value deleteSnapshot(napi_env env, napi_callback_info info)
-{
+static napi_value deleteSnapshot(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 2)
-    {
+    if (argc < 2) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing arguments (imagePath, snapshotName)\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -826,14 +776,12 @@ static napi_value deleteSnapshot(napi_env env, napi_callback_info info)
 
 // NAPI 函数：优化镜像
 // mode: "sparse" - 稀疏压缩, "prealloc" - 预分配, "cleanup" - 清理预分配, "optimize" - 仅优化格式参数
-static napi_value optimizeImage(napi_env env, napi_callback_info info)
-{
+static napi_value optimizeImage(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    if (argc < 3)
-    {
+    if (argc < 3) {
         napi_value result;
         napi_create_string_utf8(env, "{\"error\": \"Missing arguments (imagePath, outputPath, mode)\"}", NAPI_AUTO_LENGTH, &result);
         return result;
@@ -848,8 +796,7 @@ static napi_value optimizeImage(napi_env env, napi_callback_info info)
 
     std::vector<std::string> cmdArgs = {"qemu-img", "convert", "-f", "qcow2", "-O", "qcow2"};
 
-    if (mode == "prealloc")
-    {
+    if (mode == "prealloc") {
         // 预分配格式（最高性能）
         cmdArgs.push_back("-o");
         cmdArgs.push_back("preallocation=full");
@@ -871,7 +818,6 @@ static napi_value optimizeImage(napi_env env, napi_callback_info info)
     napi_create_string_utf8(env, output.c_str(), NAPI_AUTO_LENGTH, &result);
     return result;
 }
-
 
 static void call_on_data_callback(napi_env env, napi_value js_callback, void *context, void *data) {
 
@@ -920,7 +866,8 @@ std::string convert_to_hex(const uint8_t *buffer, int r) {
 }
 
 void send_data_to_callback(const uint8_t *data, size_t len, napi_threadsafe_function callback) {
-    if (len == 0) return;
+    if (len == 0)
+        return;
     data_buffer *pbuf = new data_buffer{.buf = new char[len], .size = len};
     memcpy(pbuf->buf, data, len);
     napi_call_threadsafe_function(callback, pbuf, napi_tsfn_nonblocking);
@@ -950,7 +897,7 @@ void serial_output_worker(const char *unix_socket_path) {
         if (waitedMs >= kMaxWaitSeconds * 1000) {
             OH_LOG_ERROR(LOG_APP, "serial socket not created within %d seconds, QEMU likely failed to start. path=%{public}s",
                          kMaxWaitSeconds, unix_socket_path);
-            return;  // QEMU 没起来，退出线程避免永远阻塞
+            return; // QEMU 没起来，退出线程避免永远阻塞
         }
         OH_LOG_INFO(LOG_APP, "serial socket not exist yet (%d ms): %{public}s", waitedMs, unix_socket_path);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -980,15 +927,15 @@ void serial_output_worker(const char *unix_socket_path) {
         client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (client_fd == -1) {
             OH_LOG_ERROR(LOG_APP, "Failed to create unix socket: %d", errno);
-            return;  // socket 创建失败是致命错误，不重试
+            return; // socket 创建失败是致命错误，不重试
         }
 
         if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_un)) == 0) {
-            break;  // 连接成功
+            break; // 连接成功
         }
 
         OH_LOG_WARN(LOG_APP, "Connect serial socket failed (attempt %d/%d): errno=%d, will retry in %dms",
-                     attempt, kMaxConnectAttempts, errno, kConnectRetryMs);
+                    attempt, kMaxConnectAttempts, errno, kConnectRetryMs);
         close(client_fd);
         client_fd = -1;
 
@@ -1021,7 +968,7 @@ void serial_output_worker(const char *unix_socket_path) {
         if (res < 0) {
             // poll 出错，通常是 fd 被关闭或信号中断
             if (errno == EINTR) {
-                continue;  // 信号中断，重试
+                continue; // 信号中断，重试
             }
             OH_LOG_ERROR(LOG_APP, "poll failed: errno=%{public}d", errno);
             break;
@@ -1040,12 +987,11 @@ void serial_output_worker(const char *unix_socket_path) {
                 }
             } else if (r < 0) {
                 if (errno == EINTR || errno == EAGAIN) {
-                    continue;  // 可重试错误
+                    continue; // 可重试错误
                 }
                 OH_LOG_INFO(LOG_APP, "Program exited, %{public}ld %{public}d", r, errno);
                 broken = true;
-            }
-            else if (r == 0) {
+            } else if (r == 0) {
                 // EOF: 对端关闭了连接
                 OH_LOG_INFO(LOG_APP, "Serial socket EOF - peer closed connection");
                 broken = true;
@@ -1056,12 +1002,12 @@ void serial_output_worker(const char *unix_socket_path) {
             break;
         }
     }
-    
+
     // 清理 socket 资源，但保留回调以便新的 worker 线程使用
     close(client_fd);
     serial_input_fd = -1;
     OH_LOG_INFO(LOG_APP, "Closed serial socket fd: %{public}d", client_fd);
-    
+
     if (on_data_callback != nullptr) {
         napi_release_threadsafe_function(on_data_callback, napi_threadsafe_function_release_mode::napi_tsfn_release);
         on_data_callback = nullptr;
@@ -1137,7 +1083,6 @@ static napi_value startVM(napi_env env, napi_callback_info info) {
     }
 
     std::thread vm_loop([argsVector, qemuEntry]() {
-
         const char **argv = new const char *[argsVector.size() + 1];
         for (auto i = 0; i < argsVector.size(); i += 1) {
             argv[i] = argsVector[i].c_str();
@@ -1156,11 +1101,10 @@ static napi_value startVM(napi_env env, napi_callback_info info) {
         delete[] argv;
 
         OH_LOG_ERROR(LOG_APP, "QEMU main thread exited, status=%d (%{public}s)", status,
-                     status == 0 ? "success" :
-                     status == 1 ? "general error" :
-                     status == 2 ? "invalid command line" :
-                     status == 127 ? "command not found (check QEMU lib)" :
-                     "unknown error code");
+                     status == 0 ? "success" : status == 1 ? "general error"
+                                           : status == 2   ? "invalid command line"
+                                           : status == 127 ? "command not found (check QEMU lib)"
+                                                           : "unknown error code");
 
         if (on_shutdown_callback != nullptr) {
             OH_LOG_INFO(LOG_APP, "Calling onShutdown callback");
@@ -1206,8 +1150,7 @@ static napi_value sendInput(napi_env env, napi_callback_info info) {
     }
 
     int written = 0;
-    while (written < (int)length)
-    {
+    while (written < (int)length) {
         // P0-02修复: 移除assert，使用显式错误处理
         int size = write(serial_input_fd, (uint8_t *)data + written, length - written);
         if (size < 0) {
@@ -1305,7 +1248,7 @@ static napi_value checkPortUsed(napi_env env, napi_callback_info info) {
     if (sock < 0) {
         return bool_from_int(env, 1);
     }
-    
+
     int v = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &v, sizeof(v));
 
@@ -1365,4 +1308,6 @@ static napi_module demoModule = {
     .reserved = {0},
 };
 
-extern "C" __attribute__((constructor)) void RegisterEntryModule(void) { napi_module_register(&demoModule); }
+extern "C" __attribute__((constructor)) void RegisterEntryModule(void) {
+    napi_module_register(&demoModule);
+}
