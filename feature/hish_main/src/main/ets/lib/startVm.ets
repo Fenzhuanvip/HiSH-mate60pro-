@@ -2,6 +2,9 @@ import { fileIo as fs } from '@kit.CoreFileKit'
 import napi from 'libhish_main.so'
 import { defaultEmulator, PortMapping } from '../model/Emulator'
 import deviceInfo from '@ohos.deviceInfo'
+import { hilog } from '@kit.PerformanceAnalysisKit'
+
+const DOMAIN = 0x0000
 
 interface VmOptions {
   baseDir: string
@@ -23,6 +26,26 @@ interface VmOptions {
 }
 
 function startVm(options: VmOptions): boolean {
+  // === 启动前诊断：检查关键文件是否存在 ===
+  const requiredFiles: Array<{ path: string; label: string }> = [
+    { path: options.kernel, label: 'kernel' },
+    { path: options.rootFilesystem, label: 'rootFilesystem' },
+    { path: options.baseDir, label: 'QEMU baseDir (pc-bios)' },
+  ]
+  for (const f of requiredFiles) {
+    try {
+      if (!fs.accessSync(f.path, fs.AccessModeType.EXIST)) {
+        hilog.error(DOMAIN, 'startVm', '启动失败：关键文件不存在 [%{public}s] path=%{public}s', f.label, f.path)
+        return false
+      }
+    } catch (e) {
+      hilog.error(DOMAIN, 'startVm', '启动失败：访问关键文件异常 [%{public}s] path=%{public}s err=%{public}s',
+        f.label, f.path, JSON.stringify(e))
+      return false
+    }
+  }
+  hilog.info(DOMAIN, 'startVm', '关键文件检查通过，kernel=%{public}s, rootfs=%{public}s', options.kernel, options.rootFilesystem)
+
   const root = options.rootVda ? options.rootVda : defaultEmulator.rootVda;
   const sharedFolderOption = options.sharedFolderReadonly ? ",readonly" : ""
 
