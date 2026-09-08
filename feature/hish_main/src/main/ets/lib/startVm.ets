@@ -25,9 +25,14 @@ interface VmOptions {
   vncPort: number      // VNC port number (e.g. 5900)
 }
 
+interface RequiredFile {
+  path: string
+  label: string
+}
+
 function startVm(options: VmOptions): boolean {
   // === 启动前诊断：检查关键文件是否存在 ===
-  const requiredFiles: Array<{ path: string; label: string }> = [
+  const requiredFiles: RequiredFile[] = [
     { path: options.kernel, label: 'kernel' },
     { path: options.rootFilesystem, label: 'rootFilesystem' },
     { path: options.baseDir, label: 'QEMU baseDir (pc-bios)' },
