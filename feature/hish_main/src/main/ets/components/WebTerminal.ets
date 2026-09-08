@@ -38,7 +38,6 @@ export default struct WebTerminal {
   @Watch('onCursorShapeChanged') @StorageProp(appOption.terminalCursorShape) cursorShape: CursorShape | null = null
   @Watch('onCursorBlinkChanged') @StorageProp(appOption.terminalCursorBlink) cursorBlink: boolean | null = null
   @Watch('saveShowVirtKey') @StorageProp(appOption.showVirtKey) showVirtKey: boolean = true
-  @StorageProp(appOption.vncEnabled) vncEnabled: boolean = false
   @Watch('onLigaturesChanged') @StorageProp(appOption.terminalLigatures) termLigatures: boolean = false
   @Watch('onItalicChanged') @StorageProp(appOption.terminalItalic) termItalic: boolean = true
   @Watch('onBgColorChanged') @StorageProp(appOption.terminalBackgroundColor) termBgColor: string = '#000000'
@@ -173,20 +172,6 @@ export default struct WebTerminal {
   }
 
   private settingsButtonOptions(): MenuElement[] {
-    const vncOptions: MenuElement[] = this.vncEnabled ? [{
-      value: $r('app.string.vnc_console_title'),
-      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.display')).fontSize($r('sys.float.Title_S')),
-      action: () => {
-        const vncEnabled = AppStorage.get<boolean>(appOption.vncEnabled)!!
-        if (vncEnabled) {
-          this.getUIContext().getRouter().pushUrl({
-            url: 'pages/VncPage'
-          });
-        } else {
-          this.getUIContext().getPromptAction().showToast({ message: $r('app.string.vnc_service_not_started') });
-        }
-      }
-    }] : []
     const regularOptions: MenuElement[] = [{
       value: $r('app.string.menu_emulator_management'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.more')).fontSize($r('sys.float.Title_S')),
@@ -200,7 +185,7 @@ export default struct WebTerminal {
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.gearshape')).fontSize($r('sys.float.Title_S')),
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SettingsPage' })
     }]
-    return [...vncOptions, ...regularOptions];
+    return regularOptions;
   }
 
   @Builder

@@ -7,7 +7,6 @@
     "pages/RootfsManagement",
     "pages/SharedFolderPage",
     "pages/UserGuidePage",
-    "pages/GuideWebPage",
-    "pages/VncPage"
+    "pages/GuideWebPage"
   ]
 }
