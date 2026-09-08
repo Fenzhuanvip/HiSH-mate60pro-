@@ -266,8 +266,8 @@ export class QemuAgent {
             if (line.length > 0) {
               try {
                 // [修复] 处理 QGA 特有的 0xFF 引导符
-                // 由于 TextDecoder('utf-8') 可能会将 0xFF 解码为 \uFFFD，我们直接定位 '{' 开始解析
-                const braceIndex = line.indexOf('{')
+                // 由于 TextDecoder 可能会将 0xFF 解码为 \uFFFD，我们直接定位左花括号开始解析
+                const braceIndex = line.indexOf('\x7B')
                 if (braceIndex > 0) {
                   line = line.substring(braceIndex)
                 } else if (braceIndex === -1) {

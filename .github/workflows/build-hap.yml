@@ -291,6 +291,15 @@ jobs:
           print('\n'.join(packed))
           PY
 
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hap-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload HAP artifact
         uses: actions/upload-artifact@v4
         with:
