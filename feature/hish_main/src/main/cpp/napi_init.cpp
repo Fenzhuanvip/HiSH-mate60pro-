@@ -47,6 +47,8 @@ std::string temp_buffer = "";
 
 typedef int (*QemuSystemEntry)(int, const char **);
 
+static std::string g_nativeLibDir;
+
 static std::string resolveNativeLibPath(const char *libName) {
     Dl_info info;
     if (dladdr(reinterpret_cast<void *>(resolveNativeLibPath), &info) && info.dli_fname) {
@@ -55,11 +57,34 @@ static std::string resolveNativeLibPath(const char *libName) {
         pathCopy.push_back('\0');
         char *dir = dirname(pathCopy.data());
         if (dir != nullptr && dir[0] != '\0') {
+            g_nativeLibDir = dir;
             return std::string(dir) + "/" + libName;
         }
     }
     return libName;
 }
+
+// 获取 native lib 目录（libhish_main.so 所在目录），供 ArkTS 层预检查文件
+static std::string getNativeLibDir() {
+    if (!g_nativeLibDir.empty()) {
+        return g_nativeLibDir;
+    }
+    Dl_info info;
+    if (dladdr(reinterpret_cast<void *>(resolveNativeLibPath), &info) && info.dli_fname) {
+        std::string path = info.dli_fname;
+        std::vector<char> pathCopy(path.begin(), path.end());
+        pathCopy.push_back('\0');
+        char *dir = dirname(pathCopy.data());
+        if (dir != nullptr && dir[0] != '\0') {
+            g_nativeLibDir = dir;
+            return g_nativeLibDir;
+        }
+    }
+    return "";
+}
+
+// 最近一次 QEMU 加载的诊断信息（JSON 格式）
+static std::string g_qemuLoadDiagnostic;
 
 static void *tryDlopenQemu(const char *libName) {
     std::string fullPath = resolveNativeLibPath(libName);
@@ -75,7 +100,12 @@ static void *tryDlopenQemu(const char *libName) {
         setenv("LD_LIBRARY_PATH", newPath.c_str(), 1);
         OH_LOG_INFO(LOG_APP, "Set LD_LIBRARY_PATH=%{public}s", newPath.c_str());
     }
-    OH_LOG_INFO(LOG_APP, "dlopen trying: %{public}s", fullPath.c_str());
+
+    // 检查文件是否存在（避免 dlopen 报 "file not found" 和 "dep missing" 混淆）
+    struct stat st;
+    bool fileExists = (stat(fullPath.c_str(), &st) == 0);
+    OH_LOG_INFO(LOG_APP, "dlopen trying: %{public}s (exists=%{public}d)", fullPath.c_str(), fileExists);
+
     void *handle = dlopen(fullPath.c_str(), RTLD_LAZY);
     if (handle != nullptr) {
         return handle;
@@ -92,6 +122,17 @@ static void *tryDlopenQemu(const char *libName) {
         err = dlerror();
         OH_LOG_ERROR(LOG_APP, "dlopen(%{public}s) failed: %{public}s", libName, err ? err : "unknown");
     }
+
+    // 构建详细诊断信息
+    std::ostringstream diag;
+    diag << "{\"libName\":\"" << libName << "\""
+         << ",\"fullPath\":\"" << fullPath << "\""
+         << ",\"fileExists\":" << (fileExists ? "true" : "false")
+         << ",\"nativeLibDir\":\"" << g_nativeLibDir << "\""
+         << ",\"dlopenError\":\"" << (err ? err : "unknown") << "\""
+         << "}";
+    g_qemuLoadDiagnostic = diag.str();
+
     return nullptr;
 }
 
@@ -103,22 +144,37 @@ static QemuSystemEntry getQemuSystemEntry(bool supportJit) {
         return qemuSystemEntry;
     }
 
+    // 重置诊断，开始新的加载尝试
+    g_qemuLoadDiagnostic = "";
+    std::string attemptedLib;
+
     void *libQemuHandle = nullptr;
 
     if (supportJit) {
         OH_LOG_INFO(LOG_APP, "Loading QEMU: libqemu-system-aarch64.so (JIT)");
+        attemptedLib = "libqemu-system-aarch64.so";
         libQemuHandle = tryDlopenQemu("libqemu-system-aarch64.so");
     } else {
         OH_LOG_INFO(LOG_APP, "Loading QEMU: libqemu-system-aarch64-tci.so (TCI)");
+        attemptedLib = "libqemu-system-aarch64-tci.so";
         libQemuHandle = tryDlopenQemu("libqemu-system-aarch64-tci.so");
         if (libQemuHandle == nullptr) {
             OH_LOG_INFO(LOG_APP, "TCI load failed, falling back to JIT");
+            attemptedLib = "libqemu-system-aarch64.so (TCI->JIT fallback)";
             libQemuHandle = tryDlopenQemu("libqemu-system-aarch64.so");
         }
     }
 
     if (libQemuHandle == nullptr) {
         OH_LOG_ERROR(LOG_APP, "Failed to load QEMU library");
+        // 如果 tryDlopenQemu 没设置诊断（不应该），补一个
+        if (g_qemuLoadDiagnostic.empty()) {
+            std::ostringstream diag;
+            diag << "{\"stage\":\"dlopen_failed\",\"attemptedLib\":\"" << attemptedLib << "\""
+                 << ",\"nativeLibDir\":\"" << getNativeLibDir() << "\""
+                 << "}";
+            g_qemuLoadDiagnostic = diag.str();
+        }
         return nullptr;
     }
 
@@ -126,6 +182,12 @@ static QemuSystemEntry getQemuSystemEntry(bool supportJit) {
     if (qemuSystemEntry == nullptr) {
         const char *err = dlerror();
         OH_LOG_ERROR(LOG_APP, "dlsym(qemu_system_entry) failed: %{public}s", err ? err : "unknown");
+        std::ostringstream diag;
+        diag << "{\"stage\":\"dlsym_failed\",\"symbol\":\"qemu_system_entry\""
+             << ",\"lib\":\"" << attemptedLib << "\""
+             << ",\"error\":\"" << (err ? err : "symbol not found") << "\""
+             << "}";
+        g_qemuLoadDiagnostic = diag.str();
         return nullptr;
     }
     OH_LOG_INFO(LOG_APP, "libqemu.so, handle: 0x%{public}p, entry: 0x%{public}p", libQemuHandle, qemuSystemEntry);
@@ -1121,6 +1183,75 @@ static napi_value startVM(napi_env env, napi_callback_info info) {
     return result;
 }
 
+// NAPI 函数：获取 native lib 目录（libhish_main.so 所在目录）
+// 供 ArkTS 层在启动前检查 QEMU so 文件是否存在
+static napi_value getNativeLibDirNapi(napi_env env, napi_callback_info info) {
+    std::string dir = getNativeLibDir();
+    OH_LOG_INFO(LOG_APP, "getNativeLibDir: %{public}s", dir.c_str());
+    napi_value result;
+    napi_create_string_utf8(env, dir.c_str(), NAPI_AUTO_LENGTH, &result);
+    return result;
+}
+
+// NAPI 函数：获取最近一次 QEMU 加载的诊断信息（JSON 格式）
+// 在 startVM 返回 false 后调用，获取 dlopen/dlsym 的详细错误
+static napi_value getQemuLoadDiagnosticNapi(napi_env env, napi_callback_info info) {
+    // 如果诊断为空（可能是因为 dlopen 还没被调用过），先触发一次 resolveNativeLibPath
+    if (g_qemuLoadDiagnostic.empty() && g_nativeLibDir.empty()) {
+        getNativeLibDir();
+    }
+    napi_value result;
+    napi_create_string_utf8(env, g_qemuLoadDiagnostic.c_str(), NAPI_AUTO_LENGTH, &result);
+    return result;
+}
+
+// NAPI 函数：预检查所有需要的 QEMU 库是否存在于 native lib 目录
+// 返回 JSON: {"ok": bool, "nativeLibDir": str, "libs": [{name, exists, size}]}
+static napi_value preflightQemuLibs(napi_env env, napi_callback_info info) {
+    std::string libDir = getNativeLibDir();
+
+    const char *requiredLibs[] = {
+        "libqemu-system-aarch64.so",
+        "libqemu-img.so",
+        "libslirp.so.0",
+        nullptr
+    };
+
+    std::ostringstream json;
+    json << "{\"ok\":true,\"nativeLibDir\":\"" << libDir << "\",\"libs\":[";
+
+    bool allOk = true;
+    for (int i = 0; requiredLibs[i] != nullptr; i++) {
+        std::string fullPath = libDir + "/" + requiredLibs[i];
+        struct stat st;
+        bool exists = (stat(fullPath.c_str(), &st) == 0);
+        if (!exists) allOk = false;
+
+        if (i > 0) json << ",";
+        json << "{\"name\":\"" << requiredLibs[i] << "\""
+             << ",\"exists\":" << (exists ? "true" : "false")
+             << ",\"size\":" << (exists ? (unsigned long)st.st_size : 0)
+             << "}";
+    }
+    json << "]}";
+
+    // 更新 ok 字段
+    std::string resultStr = json.str();
+    if (!allOk) {
+        // 把开头的 "true" 改成 "false"
+        size_t pos = resultStr.find("\"ok\":true");
+        if (pos != std::string::npos) {
+            resultStr.replace(pos, 10, "\"ok\":false");
+        }
+    }
+
+    OH_LOG_INFO(LOG_APP, "preflightQemuLibs: %{public}s", resultStr.c_str());
+
+    napi_value result;
+    napi_create_string_utf8(env, resultStr.c_str(), NAPI_AUTO_LENGTH, &result);
+    return result;
+}
+
 static napi_value sendInput(napi_env env, napi_callback_info info) {
 
     if (serial_input_fd < 0) {
@@ -1291,6 +1422,10 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"applySnapshot", nullptr, applySnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"deleteSnapshot", nullptr, deleteSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"optimizeImage", nullptr, optimizeImage, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // QEMU 运行时诊断功能
+        {"getNativeLibDir", nullptr, getNativeLibDirNapi, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getQemuLoadDiagnostic", nullptr, getQemuLoadDiagnosticNapi, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"preflightQemuLibs", nullptr, preflightQemuLibs, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
 

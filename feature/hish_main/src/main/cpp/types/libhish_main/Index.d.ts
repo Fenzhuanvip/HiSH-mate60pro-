@@ -16,3 +16,8 @@ export const createSnapshot: (imagePath: string, snapshotName: string) => string
 export const applySnapshot: (imagePath: string, snapshotName: string) => string;
 export const deleteSnapshot: (imagePath: string, snapshotName: string) => string;
 export const optimizeImage: (imagePath: string, outputPath: string, mode: 'sparse' | 'prealloc' | 'cleanup' | 'optimize') => string;
+
+// QEMU 运行时诊断
+export const getNativeLibDir: () => string;
+export const getQemuLoadDiagnostic: () => string;
+export const preflightQemuLibs: () => string;

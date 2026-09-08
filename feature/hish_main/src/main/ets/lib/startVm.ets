@@ -27,8 +27,53 @@ interface RequiredFile {
   label: string
 }
 
-function startVm(options: VmOptions): boolean {
-  // === 启动前诊断：检查关键文件是否存在 ===
+// startVm 返回值：不仅有成功/失败，还携带诊断信息
+export interface VmStartResult {
+  success: boolean
+  errorCode?: 'PREFLIGHT_FAILED' | 'DLOPEN_FAILED' | 'DLSYM_FAILED' | 'KEYFILE_MISSING' | 'UNKNOWN'
+  errorMessage?: string
+  nativeLibDir?: string
+  missingLibs?: string[]
+  dlopenError?: string
+}
+
+function startVm(options: VmOptions): VmStartResult {
+  hilog.info(DOMAIN, 'startVm', '=== startVm called ===')
+
+  // === Phase 0: Native Lib 预检查 ===
+  // 在启动 VM 前先用 native 层检查 QEMU so 文件是否存在
+  let preflightResult: any = null
+  let nativeLibDir: string = ''
+  try {
+    const preflightRaw = napi.preflightQemuLibs()
+    hilog.info(DOMAIN, 'startVm', 'preflightQemuLibs raw: %{public}s', preflightRaw)
+    preflightResult = JSON.parse(preflightRaw)
+    nativeLibDir = preflightResult.nativeLibDir || ''
+
+    if (!preflightResult.ok) {
+      const missing = (preflightResult.libs || [])
+        .filter((l: any) => !l.exists)
+        .map((l: any) => l.name)
+      hilog.error(DOMAIN, 'startVm',
+        'PREFLIGHT FAILED: nativeLibDir=%{public}s, missing=%{public}s',
+        nativeLibDir, JSON.stringify(missing))
+
+      const details = missing.map((m: string) =>
+        `  - ${m} (expected at: ${nativeLibDir}/${m})`).join('\n')
+      return {
+        success: false,
+        errorCode: 'PREFLIGHT_FAILED',
+        errorMessage: `QEMU 运行库缺失！native lib 目录: ${nativeLibDir}\n缺失文件:\n${details}\n\n这通常意味着:\n1. 安装的 HAP 版本未包含 QEMU 二进制\n2. 需要从 CI(workflow: build-hap) 重新构建 HAP 并安装\n3. 或手动把 feature/hish_main/libs/arm64-v8a/ 下的 .so 文件打包进 HAP`,
+        nativeLibDir,
+        missingLibs: missing,
+      }
+    }
+    hilog.info(DOMAIN, 'startVm', 'preflight OK, nativeLibDir=%{public}s', nativeLibDir)
+  } catch (e) {
+    hilog.warn(DOMAIN, 'startVm', 'preflightQemuLibs exception (may be OK if libs exist): %{public}s', JSON.stringify(e))
+  }
+
+  // === Phase 1: 启动前诊断：检查关键文件是否存在 ===
   const requiredFiles: RequiredFile[] = [
     { path: options.kernel, label: 'kernel' },
     { path: options.rootFilesystem, label: 'rootFilesystem' },
@@ -38,12 +83,20 @@ function startVm(options: VmOptions): boolean {
     try {
       if (!fs.accessSync(f.path, fs.AccessModeType.EXIST)) {
         hilog.error(DOMAIN, 'startVm', '启动失败：关键文件不存在 [%{public}s] path=%{public}s', f.label, f.path)
-        return false
+        return {
+          success: false,
+          errorCode: 'KEYFILE_MISSING',
+          errorMessage: `关键文件缺失: ${f.label} (${f.path})`,
+        }
       }
     } catch (e) {
       hilog.error(DOMAIN, 'startVm', '启动失败：访问关键文件异常 [%{public}s] path=%{public}s err=%{public}s',
         f.label, f.path, JSON.stringify(e))
-      return false
+      return {
+        success: false,
+        errorCode: 'KEYFILE_MISSING',
+        errorMessage: `访问文件异常: ${f.label} (${f.path}): ${JSON.stringify(e)}`,
+      }
     }
   }
   hilog.info(DOMAIN, 'startVm', '关键文件检查通过，kernel=%{public}s, rootfs=%{public}s', options.kernel, options.rootFilesystem)
@@ -127,13 +180,66 @@ function startVm(options: VmOptions): boolean {
 
   const supportJit: boolean = true;
 
+  hilog.info(DOMAIN, 'startVm', 'Calling napi.startVM with %{public}d args, supportJit=%{public}d', args.length, supportJit)
   const started: boolean = napi.startVM({
     argsLines: args.join('\n'),
     unixSocket: options.serialUnixSocket,
     qmpSocket: options.qmpUnixSocket,
     supportJit
-  });
-  return started === true
+  })
+
+  if (started) {
+    hilog.info(DOMAIN, 'startVm', 'startVM returned true')
+    return { success: true }
+  }
+
+  // startVM 返回 false，获取 C++ 层详细诊断
+  let diagnostic: any = null
+  let diagnosticRaw: string = ''
+  try {
+    diagnosticRaw = napi.getQemuLoadDiagnostic()
+    hilog.error(DOMAIN, 'startVm', 'startVM failed, C++ diagnostic: %{public}s', diagnosticRaw)
+    diagnostic = JSON.parse(diagnosticRaw)
+  } catch (e) {
+    hilog.error(DOMAIN, 'startVm', 'Failed to parse diagnostic: %{public}s, raw=%{public}s', JSON.stringify(e), diagnosticRaw)
+  }
+
+  // 构建结构化错误返回
+  let errorCode: VmStartResult['errorCode'] = 'UNKNOWN'
+  let errorMessage = 'VM 启动失败，QEMU 运行库加载失败'
+  let dlopenError: string | undefined = undefined
+
+  if (diagnostic) {
+    const stage = diagnostic.stage || ''
+    if (stage === 'dlsym_failed') {
+      errorCode = 'DLSYM_FAILED'
+      errorMessage = `QEMU 库已加载但符号缺失: ${diagnostic.symbol}。库 ${diagnostic.lib} 可能不兼容。nativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}`
+    } else if (diagnostic.dlopenError) {
+      errorCode = 'DLOPEN_FAILED'
+      dlopenError = diagnostic.dlopenError
+      const fileExists = diagnostic.fileExists
+      if (fileExists === false) {
+        errorMessage = `QEMU 库文件不存在！native lib 目录: ${diagnostic.nativeLibDir || nativeLibDir}\n期望文件: ${diagnostic.fullPath}\n\n请确保 HAP 包含 QEMU 运行时库。\n详见: 应用日志中搜索 "preflightQemuLibs"`
+      } else {
+        // 文件存在但 dlopen 失败 → 依赖缺失
+        errorMessage = `QEMU 库加载失败（依赖缺失或 ABI 不兼容）。\n库路径: ${diagnostic.fullPath}\ndlopen 错误: ${diagnostic.dlopenError}\nnativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}\n\n这通常是因为 QEMU 运行库的依赖（如 libslirp.so.0）未被打包进 HAP。`
+      }
+    } else if (diagnostic.stage === 'dlopen_failed') {
+      errorCode = 'DLOPEN_FAILED'
+      errorMessage = `QEMU dlopen 失败: attempted=${diagnostic.attemptedLib}, nativeLibDir=${diagnostic.nativeLibDir || nativeLibDir}`
+    }
+  }
+
+  hilog.error(DOMAIN, 'startVm', '=== startVm FAILED: errorCode=%{public}s, errorMessage=%{public}s ===',
+    errorCode, errorMessage)
+
+  return {
+    success: false,
+    errorCode,
+    errorMessage,
+    nativeLibDir: diagnostic?.nativeLibDir || nativeLibDir,
+    dlopenError,
+  }
 }
 
 export { startVm, VmOptions }
