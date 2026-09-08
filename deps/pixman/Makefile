@@ -12,7 +12,21 @@ all: download/$(SOURCE_FILE)
 	mkdir -p temp build
 	tar xf download/$(SOURCE_FILE) -C temp
 	cd temp/$(SOURCE_DIR) && ./configure $(CONFIG_ARGS)
-	test -f temp/$(SOURCE_DIR)/config.h
+	pwd
+	ls -la temp/$(SOURCE_DIR) | head
+	find temp/$(SOURCE_DIR) -name 'config.h*' -ls || true
+	rm -f temp/$(SOURCE_DIR)/config.h temp/$(SOURCE_DIR)/pixman/config.h
+	cd temp/$(SOURCE_DIR) && ./config.status config.h
+	find temp/$(SOURCE_DIR) -name 'config.h*' -ls || true
+	if [ -f temp/$(SOURCE_DIR)/config.h ]; then \
+		cp -f temp/$(SOURCE_DIR)/config.h temp/$(SOURCE_DIR)/pixman/config.h; \
+	elif [ -f temp/$(SOURCE_DIR)/pixman/config.h ]; then \
+		cp -f temp/$(SOURCE_DIR)/pixman/config.h temp/$(SOURCE_DIR)/config.h; \
+	else \
+		echo "ERROR: pixman config.h missing after config.status"; \
+		ls -la temp/$(SOURCE_DIR); \
+		exit 1; \
+	fi
 	$(MAKE) -C temp/$(SOURCE_DIR) -j $(shell nproc)
 	$(MAKE) -C temp/$(SOURCE_DIR) install DESTDIR=$(CURDIR)/build
 	mkdir -p ../buildroot
