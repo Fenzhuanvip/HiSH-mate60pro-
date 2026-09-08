@@ -221,14 +221,25 @@ jobs:
           name: qemu-libs-aarch64
           path: ./
 
+      - name: Place QEMU libs to correct path
+        run: |
+          # download-artifact strips common prefix, so libs land at ./libs/arm64-v8a/
+          # Move them to where the project expects them
+          if [ -d libs/arm64-v8a ] && [ ! -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so ]; then
+            mkdir -p feature/hish_main/libs/arm64-v8a
+            cp -rv libs/arm64-v8a/* feature/hish_main/libs/arm64-v8a/
+          fi
+          # Same for keymaps and efi-rom
+          if [ -d src/main/resources/rawfile/vm/keymaps ]; then
+            mkdir -p feature/hish_main/src/main/resources/rawfile/vm/keymaps
+            cp -rv src/main/resources/rawfile/vm/keymaps/* feature/hish_main/src/main/resources/rawfile/vm/keymaps/ 2>/dev/null || true
+          fi
+          if [ -f src/main/resources/rawfile/vm/efi-virtio.rom ]; then
+            cp -v src/main/resources/rawfile/vm/efi-virtio.rom feature/hish_main/src/main/resources/rawfile/vm/ 2>/dev/null || true
+          fi
+
       - name: Verify QEMU runtime libs
         run: |
-          echo "=== Debug: find downloaded QEMU libs ==="
-          find . -name "libqemu*" -type f 2>/dev/null || true
-          echo "=== Debug: ls feature/hish_main/libs/ ==="
-          ls -laR feature/hish_main/libs/ 2>/dev/null || echo "libs/ dir not found"
-          echo "=== Debug: ls workspace root ==="
-          ls -la . 2>/dev/null || true
           test -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so
           test -f feature/hish_main/libs/arm64-v8a/libqemu-img.so
           ls -lh feature/hish_main/libs/arm64-v8a/
