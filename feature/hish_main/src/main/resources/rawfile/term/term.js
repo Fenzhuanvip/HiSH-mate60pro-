@@ -465,15 +465,21 @@ exports.write = (data, applicationMode) => {
     }
 };
 
+// 复用的 Uint8Array 转换缓冲，避免每次 write 都重新分配
+let _writeBuf = new Uint8Array(0);
+
 exports.writeBase64 = (base64Data, applicationMode) => {
     try {
         const binaryString = atob(base64Data);
         const len = binaryString.length;
-        const uint8 = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            uint8[i] = binaryString.charCodeAt(i);
+        if (_writeBuf.length < len) {
+            _writeBuf = new Uint8Array(len);
         }
-        term.write(uint8);
+        for (let i = 0; i < len; i++) {
+            _writeBuf[i] = binaryString.charCodeAt(i);
+        }
+        // 使用 subarray 避免创建新的 Uint8Array
+        term.write(_writeBuf.subarray(0, len));
 
         if (term.modes.applicationCursorKeysMode !== applicationMode) {
             if (native && native.setApplicationMode) {
