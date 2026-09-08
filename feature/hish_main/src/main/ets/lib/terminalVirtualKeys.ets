@@ -89,7 +89,20 @@ export const NormalKeySequences: NormalKeySequencesMap = {
 }
 
 // 带修饰键的方向键序列（xterm 风格），用于 TUI 应用的选择/跳转
-export const ModifiedArrowSequences = {
+export interface ModifiedArrowSequences {
+  SHIFT_UP: string
+  SHIFT_DOWN: string
+  SHIFT_RIGHT: string
+  SHIFT_LEFT: string
+  CTRL_UP: string
+  CTRL_DOWN: string
+  CTRL_RIGHT: string
+  CTRL_LEFT: string
+  SHIFT_TAB: string
+  CTRL_TAB: string
+}
+
+export const modifiedArrowSequences: ModifiedArrowSequences = {
   SHIFT_UP: '\x1b[1;2A',
   SHIFT_DOWN: '\x1b[1;2B',
   SHIFT_RIGHT: '\x1b[1;2C',
@@ -129,18 +142,28 @@ export function applyVirtualKeyModifiers(data: string, ctrlPressed: boolean, shi
     const isArrow = upperKey === 'UP' || upperKey === 'DOWN' || upperKey === 'LEFT' || upperKey === 'RIGHT'
 
     if (ctrlPressed && isArrow) {
-      output = ModifiedArrowSequences['CTRL_' + upperKey] || output
+      switch (upperKey) {
+        case 'UP': output = modifiedArrowSequences.CTRL_UP; break
+        case 'DOWN': output = modifiedArrowSequences.CTRL_DOWN; break
+        case 'LEFT': output = modifiedArrowSequences.CTRL_LEFT; break
+        case 'RIGHT': output = modifiedArrowSequences.CTRL_RIGHT; break
+      }
       ctrlConverted = true
       shouldResetCtrl = true
     } else if (shiftPressed && isArrow) {
-      output = ModifiedArrowSequences['SHIFT_' + upperKey] || output
+      switch (upperKey) {
+        case 'UP': output = modifiedArrowSequences.SHIFT_UP; break
+        case 'DOWN': output = modifiedArrowSequences.SHIFT_DOWN; break
+        case 'LEFT': output = modifiedArrowSequences.SHIFT_LEFT; break
+        case 'RIGHT': output = modifiedArrowSequences.SHIFT_RIGHT; break
+      }
       shiftConverted = true
     } else if (ctrlPressed && upperKey === 'TAB') {
-      output = ModifiedArrowSequences.CTRL_TAB
+      output = modifiedArrowSequences.CTRL_TAB
       ctrlConverted = true
       shouldResetCtrl = true
     } else if (shiftPressed && upperKey === 'TAB') {
-      output = ModifiedArrowSequences.SHIFT_TAB
+      output = modifiedArrowSequences.SHIFT_TAB
       shiftConverted = true
     }
   }
