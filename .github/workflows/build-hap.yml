@@ -228,38 +228,32 @@ jobs:
 
       - name: Place QEMU libs to correct path
         run: |
-          set -euxo pipefail
+          set -eux
           echo "=== artifact layout after download ==="
-          find . -name 'libqemu-system-aarch64.so' -o -name 'libslirp.so*' -o -name 'efi-virtio.rom' | sort
+          ls -lh libs/arm64-v8a || true
+          ls -lh src/main/resources/rawfile/vm || true
 
-          QEMU_SO=$(find . -name 'libqemu-system-aarch64.so' | head -1)
-          if [ -z "$QEMU_SO" ]; then
+          if [ ! -f libs/arm64-v8a/libqemu-system-aarch64.so ]; then
             echo "libqemu-system-aarch64.so not found in artifact" >&2
-            find . -type f | sort
+            find . -name 'libqemu-system-aarch64.so' -o -name 'libslirp.so*' | sort
             exit 1
           fi
-          SRC_DIR=$(dirname "$QEMU_SO")
-          echo "QEMU libs source: $SRC_DIR"
-          ls -lh "$SRC_DIR"
 
-          # HarmonyOS only packs files named lib*.so (not lib*.so.0).
-          if [ -f "$SRC_DIR/libslirp.so.0" ] && [ ! -f "$SRC_DIR/libslirp.so" ]; then
-            cp -v "$SRC_DIR/libslirp.so.0" "$SRC_DIR/libslirp.so"
+          if [ -f libs/arm64-v8a/libslirp.so.0 ] && [ ! -f libs/arm64-v8a/libslirp.so ]; then
+            cp -v libs/arm64-v8a/libslirp.so.0 libs/arm64-v8a/libslirp.so
           fi
 
           mkdir -p feature/hish_main/src/main/libs/arm64-v8a
           mkdir -p feature/hish_main/libs/arm64-v8a
-          cp -av "$SRC_DIR"/. feature/hish_main/src/main/libs/arm64-v8a/
-          cp -av "$SRC_DIR"/. feature/hish_main/libs/arm64-v8a/
+          cp -av libs/arm64-v8a/. feature/hish_main/src/main/libs/arm64-v8a/
+          cp -av libs/arm64-v8a/. feature/hish_main/libs/arm64-v8a/
 
-          KEYMAPS_DIR=$(find . -type d -path '*/rawfile/vm/keymaps' | head -1)
-          if [ -n "$KEYMAPS_DIR" ]; then
+          if [ -d src/main/resources/rawfile/vm/keymaps ]; then
             mkdir -p feature/hish_main/src/main/resources/rawfile/vm/keymaps
-            cp -av "$KEYMAPS_DIR"/. feature/hish_main/src/main/resources/rawfile/vm/keymaps/
+            cp -av src/main/resources/rawfile/vm/keymaps/. feature/hish_main/src/main/resources/rawfile/vm/keymaps/
           fi
-          EFI_ROM=$(find . -name 'efi-virtio.rom' | head -1)
-          if [ -n "$EFI_ROM" ]; then
-            cp -v "$EFI_ROM" feature/hish_main/src/main/resources/rawfile/vm/
+          if [ -f src/main/resources/rawfile/vm/efi-virtio.rom ]; then
+            cp -v src/main/resources/rawfile/vm/efi-virtio.rom feature/hish_main/src/main/resources/rawfile/vm/
           fi
 
       - name: Verify QEMU runtime libs
