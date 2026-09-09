@@ -32,6 +32,7 @@ all: download/qemu
 	cp temp/qemu/build/libqemu-system-aarch64.so ./build
 	cp temp/qemu/build/libqemu-img.so ./build
 	cp temp/qemu/build/subprojects/slirp/libslirp.so.0.4.0 ./build/libslirp.so.0
+	cp temp/qemu/build/subprojects/slirp/libslirp.so.0.4.0 ./build/libslirp.so
 	cp temp/qemu/pc-bios/keymaps/en-us ./build/
 	mkdir -p ../output
 	cp -rv ./build/* ../output

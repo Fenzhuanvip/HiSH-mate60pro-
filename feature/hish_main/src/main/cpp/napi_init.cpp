@@ -86,10 +86,36 @@ static std::string getNativeLibDir() {
 // 最近一次 QEMU 加载的诊断信息（JSON 格式）
 static std::string g_qemuLoadDiagnostic;
 
+static void preloadSlirp(const std::string &libDir) {
+    const char *names[] = {"libslirp.so", "libslirp.so.0", nullptr};
+    for (int i = 0; names[i] != nullptr; i++) {
+        std::string path = libDir.empty() ? std::string(names[i]) : (libDir + "/" + names[i]);
+        struct stat st;
+        if (stat(path.c_str(), &st) != 0) {
+            continue;
+        }
+        void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+        if (handle != nullptr) {
+            OH_LOG_INFO(LOG_APP, "preloaded slirp: %{public}s", path.c_str());
+            return;
+        }
+        const char *err = dlerror();
+        OH_LOG_ERROR(LOG_APP, "preload slirp %{public}s failed: %{public}s",
+                     path.c_str(), err ? err : "unknown");
+    }
+    void *fallback = dlopen("libslirp.so", RTLD_NOW | RTLD_GLOBAL);
+    if (fallback == nullptr) {
+        fallback = dlopen("libslirp.so.0", RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (fallback != nullptr) {
+        OH_LOG_INFO(LOG_APP, "preloaded slirp by soname");
+    }
+}
+
 static void *tryDlopenQemu(const char *libName) {
     std::string fullPath = resolveNativeLibPath(libName);
     // Prepend the lib directory to LD_LIBRARY_PATH so the dynamic linker
-    // can find sibling deps (e.g. libslirp.so.0 when loading libqemu-system-aarch64.so)
+    // can find sibling deps (e.g. libslirp.so / libslirp.so.0)
     {
         std::string libDir = fullPath.substr(0, fullPath.rfind('/'));
         const char *existing = getenv("LD_LIBRARY_PATH");
@@ -99,6 +125,7 @@ static void *tryDlopenQemu(const char *libName) {
         }
         setenv("LD_LIBRARY_PATH", newPath.c_str(), 1);
         OH_LOG_INFO(LOG_APP, "Set LD_LIBRARY_PATH=%{public}s", newPath.c_str());
+        preloadSlirp(libDir);
     }
 
     // 检查文件是否存在（避免 dlopen 报 "file not found" 和 "dep missing" 混淆）
@@ -1213,7 +1240,7 @@ static napi_value preflightQemuLibs(napi_env env, napi_callback_info info) {
     const char *requiredLibs[] = {
         "libqemu-system-aarch64.so",
         "libqemu-img.so",
-        "libslirp.so.0",
+        "libslirp.so",
         nullptr
     };
 
@@ -1225,10 +1252,18 @@ static napi_value preflightQemuLibs(napi_env env, napi_callback_info info) {
         std::string fullPath = libDir + "/" + requiredLibs[i];
         struct stat st;
         bool exists = (stat(fullPath.c_str(), &st) == 0);
+        const char *foundName = requiredLibs[i];
+        if (!exists && strcmp(requiredLibs[i], "libslirp.so") == 0) {
+            std::string alt = libDir + "/libslirp.so.0";
+            exists = (stat(alt.c_str(), &st) == 0);
+            if (exists) {
+                foundName = "libslirp.so.0";
+            }
+        }
         if (!exists) allOk = false;
 
         if (i > 0) json << ",";
-        json << "{\"name\":\"" << requiredLibs[i] << "\""
+        json << "{\"name\":\"" << foundName << "\""
              << ",\"exists\":" << (exists ? "true" : "false")
              << ",\"size\":" << (exists ? (unsigned long)st.st_size : 0)
              << "}";

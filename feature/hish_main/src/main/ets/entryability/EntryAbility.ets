@@ -150,9 +150,8 @@ export default class EntryAbility extends UIAbility {
     } else {
       AppStorage.set(appOption.currentRunningEmulator, undefined)
       AppStorage.setOrCreate(appOption.currentEmulatorStatus, 'ABNORMAL')
-      // 把详细错误存入 AppStorage，供 WebTerminal 等 UI 组件展示
-      AppStorage.setOrCreate('vmStartError', detail?.errorMessage ?? 'Unknown error')
-      AppStorage.setOrCreate('vmStartErrorCode', detail?.errorCode ?? 'UNKNOWN')
+      AppStorage.setOrCreate('vmStartError', startResult.errorMessage ?? 'Unknown error')
+      AppStorage.setOrCreate('vmStartErrorCode', startResult.errorCode ?? 'UNKNOWN')
       hilog.error(DOMAIN, 'testTag', 'VM failed to start: code=%{public}s, msg=%{public}s',
         startResult.errorCode, startResult.errorMessage)
     }
