@@ -63,7 +63,7 @@ function startVm(options: VmOptions): VmStartResult {
       return {
         success: false,
         errorCode: 'PREFLIGHT_FAILED',
-        errorMessage: `QEMU 运行库缺失！native lib 目录: ${nativeLibDir}\n缺失文件:\n${details}\n\n这通常意味着:\n1. 安装的 HAP 版本未包含 QEMU 二进制\n2. 需要从 CI(workflow: build-hap) 重新构建 HAP 并安装\n3. 或手动把 feature/hish_main/libs/arm64-v8a/ 下的 .so 文件打包进 HAP`,
+        errorMessage: `QEMU 运行库缺失！native lib 目录: ${nativeLibDir}\n缺失文件:\n${details}\n\n请用 GitHub Actions 工作流 build-hap 重新构建 HAP 并安装。`,
         nativeLibDir,
         missingLibs: missing,
       }
@@ -222,7 +222,7 @@ function startVm(options: VmOptions): VmStartResult {
         errorMessage = `QEMU 库文件不存在！native lib 目录: ${diagnostic.nativeLibDir || nativeLibDir}\n期望文件: ${diagnostic.fullPath}\n\n请确保 HAP 包含 QEMU 运行时库。\n详见: 应用日志中搜索 "preflightQemuLibs"`
       } else {
         // 文件存在但 dlopen 失败 → 依赖缺失
-        errorMessage = `QEMU 库加载失败（依赖缺失或 ABI 不兼容）。\n库路径: ${diagnostic.fullPath}\ndlopen 错误: ${diagnostic.dlopenError}\nnativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}\n\n这通常是因为 QEMU 运行库的依赖（如 libslirp.so.0）未被打包进 HAP。`
+        errorMessage = `QEMU 库加载失败（依赖缺失或 ABI 不兼容）。\n库路径: ${diagnostic.fullPath}\ndlopen 错误: ${diagnostic.dlopenError}\nnativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}\n\n这通常是因为 QEMU 运行库的依赖（如 libslirp.so）未被打包进 HAP。`
       }
     } else if (diagnostic.stage === 'dlopen_failed') {
       errorCode = 'DLOPEN_FAILED'
