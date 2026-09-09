@@ -316,11 +316,14 @@ jobs:
             exit 1
           fi
           echo "Checking $HAP_FILE"
-          unzip -l "$HAP_FILE" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libhish_main\.so' || true
+          # 捕获 unzip 列表一次并忽略 unzip 的非零退出码（如 "extra bytes" 警告）。
+          # 否则在 `set -o pipefail` 下 `unzip -l | grep -q` 会因 unzip 非零而误判 missing。
+          LISTING="$(unzip -l "$HAP_FILE" 2>/dev/null || true)"
+          printf '%s\n' "$LISTING" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libhish_main\.so' || true
           for so in libqemu-system-aarch64.so libqemu-img.so libslirp.so libhish_main.so; do
-            if ! unzip -l "$HAP_FILE" | grep -q "$so"; then
+            if ! grep -q -- "$so" <<<"$LISTING"; then
               echo "$so missing from HAP" >&2
-              unzip -l "$HAP_FILE" | grep -E '\.so' || true
+              printf '%s\n' "$LISTING" | grep -E '\.so' || true
               exit 1
             fi
           done
