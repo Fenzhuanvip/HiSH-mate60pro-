@@ -66,7 +66,7 @@ export struct SettingItem {
 
 @Component
 export struct LinkItem {
-  @Prop icon?: Resource
+  @Prop icon: Resource | undefined
   @Prop title: string | Resource
   @Prop subTitle: string | Resource
   click?: () => void

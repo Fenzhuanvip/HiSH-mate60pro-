@@ -27,10 +27,37 @@ interface RequiredFile {
   label: string
 }
 
+// QEMU 库预检查结果（napi.preflightQemuLibs 返回的 JSON）
+interface PreflightLib {
+  name: string
+  exists: boolean
+}
+
+interface PreflightResult {
+  ok: boolean
+  nativeLibDir: string
+  libs: PreflightLib[]
+}
+
+// QEMU 库加载诊断（napi.getQemuLoadDiagnostic 返回的 JSON）
+interface QemuDiagnostic {
+  stage?: string
+  symbol?: string
+  lib?: string
+  attemptedLib?: string
+  nativeLibDir?: string
+  fullPath?: string
+  dlopenError?: string
+  fileExists?: boolean
+}
+
+// startVm 错误码
+export type VmErrorCode = 'PREFLIGHT_FAILED' | 'DLOPEN_FAILED' | 'DLSYM_FAILED' | 'KEYFILE_MISSING' | 'UNKNOWN'
+
 // startVm 返回值：不仅有成功/失败，还携带诊断信息
 export interface VmStartResult {
   success: boolean
-  errorCode?: 'PREFLIGHT_FAILED' | 'DLOPEN_FAILED' | 'DLSYM_FAILED' | 'KEYFILE_MISSING' | 'UNKNOWN'
+  errorCode?: VmErrorCode
   errorMessage?: string
   nativeLibDir?: string
   missingLibs?: string[]
@@ -42,18 +69,18 @@ function startVm(options: VmOptions): VmStartResult {
 
   // === Phase 0: Native Lib 预检查 ===
   // 在启动 VM 前先用 native 层检查 QEMU so 文件是否存在
-  let preflightResult: any = null
+  let preflightResult: PreflightResult | null = null
   let nativeLibDir: string = ''
   try {
     const preflightRaw = napi.preflightQemuLibs()
     hilog.info(DOMAIN, 'startVm', 'preflightQemuLibs raw: %{public}s', preflightRaw)
-    preflightResult = JSON.parse(preflightRaw)
+    preflightResult = JSON.parse(preflightRaw) as PreflightResult
     nativeLibDir = preflightResult.nativeLibDir || ''
 
     if (!preflightResult.ok) {
       const missing = (preflightResult.libs || [])
-        .filter((l: any) => !l.exists)
-        .map((l: any) => l.name)
+        .filter((l: PreflightLib): boolean => !l.exists)
+        .map((l: PreflightLib): string => l.name)
       hilog.error(DOMAIN, 'startVm',
         'PREFLIGHT FAILED: nativeLibDir=%{public}s, missing=%{public}s',
         nativeLibDir, JSON.stringify(missing))
@@ -194,18 +221,18 @@ function startVm(options: VmOptions): VmStartResult {
   }
 
   // startVM 返回 false，获取 C++ 层详细诊断
-  let diagnostic: any = null
+  let diagnostic: QemuDiagnostic | null = null
   let diagnosticRaw: string = ''
   try {
     diagnosticRaw = napi.getQemuLoadDiagnostic()
     hilog.error(DOMAIN, 'startVm', 'startVM failed, C++ diagnostic: %{public}s', diagnosticRaw)
-    diagnostic = JSON.parse(diagnosticRaw)
+    diagnostic = JSON.parse(diagnosticRaw) as QemuDiagnostic
   } catch (e) {
     hilog.error(DOMAIN, 'startVm', 'Failed to parse diagnostic: %{public}s, raw=%{public}s', JSON.stringify(e), diagnosticRaw)
   }
 
   // 构建结构化错误返回
-  let errorCode: VmStartResult['errorCode'] = 'UNKNOWN'
+  let errorCode: VmErrorCode = 'UNKNOWN'
   let errorMessage = 'VM 启动失败，QEMU 运行库加载失败'
   let dlopenError: string | undefined = undefined
 
