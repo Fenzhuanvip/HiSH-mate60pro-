@@ -540,6 +540,9 @@ export default struct SettingsContent {
       .align(Alignment.Top)
       .padding({ bottom: 50 })
     }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('sys.color.background'))
   }
 
   @Builder
@@ -559,7 +562,7 @@ export default struct SettingsContent {
 
       Text(`${this.bundleInfo?.versionName}(${this.bundleInfo?.versionCode})`)
         .fontSize(14)
-        .fontColor('#ccc')
+        .fontColor($r('sys.color.font_tertiary'))
         .margin({ top: 5 })
     }
     .width('100%')
