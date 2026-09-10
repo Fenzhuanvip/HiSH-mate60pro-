@@ -249,7 +249,7 @@ function startVm(options: VmOptions): VmStartResult {
         errorMessage = `QEMU 库文件不存在！native lib 目录: ${diagnostic.nativeLibDir || nativeLibDir}\n期望文件: ${diagnostic.fullPath}\n\n请确保 HAP 包含 QEMU 运行时库。\n详见: 应用日志中搜索 "preflightQemuLibs"`
       } else {
         // 文件存在但 dlopen 失败 → 依赖缺失
-        errorMessage = `QEMU 库加载失败（依赖缺失或 ABI 不兼容）。\n库路径: ${diagnostic.fullPath}\ndlopen 错误: ${diagnostic.dlopenError}\nnativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}\n\n这通常是因为 QEMU 运行库的依赖（如 libslirp.so）未被打包进 HAP。`
+        errorMessage = `QEMU 库加载失败（依赖缺失或 ABI 不兼容）。\n库路径: ${diagnostic.fullPath}\ndlopen 错误: ${diagnostic.dlopenError}\nnativeLibDir: ${diagnostic.nativeLibDir || nativeLibDir}\n\n这通常是因为 QEMU 运行库的依赖（如 libslirp.so / libpcre2-8.so / libz.so）未被打包进 HAP。`
       }
     } else if (diagnostic.stage === 'dlopen_failed') {
       errorCode = 'DLOPEN_FAILED'

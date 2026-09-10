@@ -86,8 +86,7 @@ static std::string getNativeLibDir() {
 // 最近一次 QEMU 加载的诊断信息（JSON 格式）
 static std::string g_qemuLoadDiagnostic;
 
-static void preloadSlirp(const std::string &libDir) {
-    const char *names[] = {"libslirp.so", "libslirp.so.0", nullptr};
+static void preloadOneLib(const std::string &libDir, const char *const *names, const char *tag) {
     for (int i = 0; names[i] != nullptr; i++) {
         std::string path = libDir.empty() ? std::string(names[i]) : (libDir + "/" + names[i]);
         struct stat st;
@@ -96,26 +95,35 @@ static void preloadSlirp(const std::string &libDir) {
         }
         void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
         if (handle != nullptr) {
-            OH_LOG_INFO(LOG_APP, "preloaded slirp: %{public}s", path.c_str());
+            OH_LOG_INFO(LOG_APP, "preloaded %{public}s: %{public}s", tag, path.c_str());
             return;
         }
         const char *err = dlerror();
-        OH_LOG_ERROR(LOG_APP, "preload slirp %{public}s failed: %{public}s",
-                     path.c_str(), err ? err : "unknown");
+        OH_LOG_ERROR(LOG_APP, "preload %{public}s %{public}s failed: %{public}s",
+                     tag, path.c_str(), err ? err : "unknown");
     }
-    void *fallback = dlopen("libslirp.so", RTLD_NOW | RTLD_GLOBAL);
-    if (fallback == nullptr) {
-        fallback = dlopen("libslirp.so.0", RTLD_NOW | RTLD_GLOBAL);
+    for (int i = 0; names[i] != nullptr; i++) {
+        void *fallback = dlopen(names[i], RTLD_NOW | RTLD_GLOBAL);
+        if (fallback != nullptr) {
+            OH_LOG_INFO(LOG_APP, "preloaded %{public}s by soname: %{public}s", tag, names[i]);
+            return;
+        }
     }
-    if (fallback != nullptr) {
-        OH_LOG_INFO(LOG_APP, "preloaded slirp by soname");
-    }
+}
+
+static void preloadQemuDeps(const std::string &libDir) {
+    const char *pcre2[] = {"libpcre2-8.so", "libpcre2-8.so.0", nullptr};
+    const char *zlib[] = {"libz.so", "libz.so.1", nullptr};
+    const char *slirp[] = {"libslirp.so", "libslirp.so.0", nullptr};
+    preloadOneLib(libDir, pcre2, "pcre2");
+    preloadOneLib(libDir, zlib, "zlib");
+    preloadOneLib(libDir, slirp, "slirp");
 }
 
 static void *tryDlopenQemu(const char *libName) {
     std::string fullPath = resolveNativeLibPath(libName);
     // Prepend the lib directory to LD_LIBRARY_PATH so the dynamic linker
-    // can find sibling deps (e.g. libslirp.so / libslirp.so.0)
+    // can find sibling deps (slirp / pcre2 / zlib)
     {
         std::string libDir = fullPath.substr(0, fullPath.rfind('/'));
         const char *existing = getenv("LD_LIBRARY_PATH");
@@ -125,7 +133,7 @@ static void *tryDlopenQemu(const char *libName) {
         }
         setenv("LD_LIBRARY_PATH", newPath.c_str(), 1);
         OH_LOG_INFO(LOG_APP, "Set LD_LIBRARY_PATH=%{public}s", newPath.c_str());
-        preloadSlirp(libDir);
+        preloadQemuDeps(libDir);
     }
 
     // 检查文件是否存在（避免 dlopen 报 "file not found" 和 "dep missing" 混淆）
@@ -1241,6 +1249,8 @@ static napi_value preflightQemuLibs(napi_env env, napi_callback_info info) {
         "libqemu-system-aarch64.so",
         "libqemu-img.so",
         "libslirp.so",
+        "libpcre2-8.so",
+        "libz.so",
         nullptr
     };
 
@@ -1253,11 +1263,21 @@ static napi_value preflightQemuLibs(napi_env env, napi_callback_info info) {
         struct stat st;
         bool exists = (stat(fullPath.c_str(), &st) == 0);
         const char *foundName = requiredLibs[i];
-        if (!exists && strcmp(requiredLibs[i], "libslirp.so") == 0) {
-            std::string alt = libDir + "/libslirp.so.0";
-            exists = (stat(alt.c_str(), &st) == 0);
-            if (exists) {
-                foundName = "libslirp.so.0";
+        if (!exists) {
+            const char *altName = nullptr;
+            if (strcmp(requiredLibs[i], "libslirp.so") == 0) {
+                altName = "libslirp.so.0";
+            } else if (strcmp(requiredLibs[i], "libpcre2-8.so") == 0) {
+                altName = "libpcre2-8.so.0";
+            } else if (strcmp(requiredLibs[i], "libz.so") == 0) {
+                altName = "libz.so.1";
+            }
+            if (altName != nullptr) {
+                std::string alt = libDir + "/" + altName;
+                exists = (stat(alt.c_str(), &st) == 0);
+                if (exists) {
+                    foundName = altName;
+                }
             }
         }
         if (!exists) allOk = false;
