@@ -77,7 +77,7 @@ jobs:
             feature/hish_main/libs/arm64-v8a/
             feature/hish_main/src/main/resources/rawfile/vm/keymaps/
             feature/hish_main/src/main/resources/rawfile/vm/efi-virtio.rom
-          key: qemu-prebuilt-hish-20260110
+          key: qemu-aarch64-slirpfix-${{ hashFiles('deps/**') }}
 
       - name: Check cached QEMU libs
         id: qemu-libs
@@ -96,21 +96,55 @@ jobs:
             ls -la feature/hish_main/libs/arm64-v8a/ || true
           fi
 
-      - name: Download pre-built QEMU libs
+      - name: Install QEMU build dependencies
         if: steps.qemu-libs.outputs.hit != 'true'
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           set -euxo pipefail
-          # 使用原版 HiSH 预编译的 QEMU 库，经过充分测试，网络（slirp）行为正确
-          wget --tries=5 --retry-connrefused -O /tmp/libs.zip \
+          exec > >(tee -a "${GITHUB_WORKSPACE}/qemu-deps.log") 2>&1
+          apt-get update
+          apt-get install -y cmake autotools-dev autoconf automake \
+            libtool pkg-config flex bison gettext texinfo curl ca-certificates patchelf
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="${HOME}/.local/bin:${PATH}"
+          uv python install 3.12
+          uv venv /opt/qemu-py --python 3.12
+          . /opt/qemu-py/bin/activate
+          uv pip install meson ninja
+          python3 --version
+          command -v python3
+          command -v meson
+          meson --version
+          ninja --version
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+          echo "/opt/qemu-py/bin" >> "$GITHUB_PATH"
+
+      - name: Build QEMU and dependencies (aarch64)
+        if: steps.qemu-libs.outputs.hit != 'true'
+        working-directory: deps
+        env:
+          TOOL_HOME: /opt/harmonyos-tools/command-line-tools
+        run: |
+          set -euxo pipefail
+          export PATH="/opt/qemu-py/bin:${HOME}/.local/bin:${PATH}"
+          python3 --version
+          meson --version
+          make aarch64 2>&1 | tee "${GITHUB_WORKSPACE}/qemu-build.log"
+
+      - name: Replace libslirp with pre-built from original HiSH
+        run: |
+          set -euxo pipefail
+          # 原版 HiSH 的 libslirp 网络行为正确，替换 CI 编译的版本
+          wget --tries=5 -O /tmp/orig-libs.zip \
             https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip
-          # 校验文件大小（约 30MB）
-          actual_size=$(stat -c%s /tmp/libs.zip)
-          if [ "$actual_size" -lt 25000000 ]; then
-            echo "ERROR: libs.zip too small ($actual_size bytes), download incomplete"
-            exit 1
-          fi
-          unzip -o /tmp/libs.zip -d feature/hish_main/libs/
-          ls -lh feature/hish_main/libs/arm64-v8a/
+          unzip -j /tmp/orig-libs.zip "libs/arm64-v8a/libslirp.so.0" -d /tmp/orig-libs/
+          cp /tmp/orig-libs/libslirp.so.0 feature/hish_main/libs/arm64-v8a/libslirp.so.0
+          # 重建符号链接
+          cd feature/hish_main/libs/arm64-v8a/
+          ln -sf libslirp.so.0 libslirp.so
+          echo "Replaced libslirp with pre-built version:"
+          ls -lh libslirp*
 
       - name: Verify QEMU libs copied
         run: |
