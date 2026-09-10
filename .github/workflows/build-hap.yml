@@ -179,7 +179,7 @@ jobs:
         continue-on-error: true
         with:
           path: rootfs_aarch64.qcow2
-          key: rootfs-alpine3.22-v2-${{ hashFiles('**/alpine-minirootfs*') }}
+          key: rootfs-alpine3.22-v3-${{ hashFiles('**/alpine-minirootfs*') }}
           restore-keys: |
             rootfs-alpine3.22-
 
@@ -205,9 +205,10 @@ jobs:
           sudo mount -o loop rootfs.img /mnt/rootfs
           sudo cp -a alpine/* /mnt/rootfs/
           # Alpine minirootfs 没有 /init（那是 initramfs 的），
-          # 也没有 openrc。创建 /init 指向 busybox，让 busybox 当 PID 1。
-          # busybox init 默认会在 console 起一个 shell。
-          sudo ln -sf /bin/busybox /mnt/rootfs/init
+          # 也没有 openrc。创建一个简单的 /init 脚本直接起 shell，
+          # 不走 busybox init（避免读 /etc/inittab 里引用的 openrc）。
+          printf '#!/bin/sh\nmount -t proc proc /proc 2>/dev/null\nmount -t sysfs sysfs /sys 2>/dev/null\nmount -t devtmpfs devtmpfs /dev 2>/dev/null\nexec /bin/sh\n' | sudo tee /mnt/rootfs/init
+          sudo chmod +x /mnt/rootfs/init
           sudo umount /mnt/rootfs
           qemu-img convert -p -f raw -O qcow2 rootfs.img rootfs_aarch64.qcow2
 
