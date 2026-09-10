@@ -9,6 +9,7 @@ import { common } from '@kit.AbilityKit';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
 import stringToArrayBuffer from '../lib/stringToArrayBuffer';
 import fileToDataUrl from '../lib/fileToDataUrl';
+import { QemuAgentManager, AgentPriority } from '../lib/QemuAgentManager';
 
 import {
   applyVirtualKeyModifiers,
@@ -444,7 +445,24 @@ export default struct WebTerminal {
     if (this.resizeTimeout !== undefined) {
       clearTimeout(this.resizeTimeout!!)
     }
-    this.resizeTimeout = setTimeout(() => this.sendInput('\x1b' + `[8;${height};${width}t`), 50)
+    // 修复：不再通过 sendInput 发送 XTWINOPS 转义序列 \x1b[8;rows;cols;t
+    // 该序列是给终端模拟器解释的，直接作为键盘输入发给 shell 会导致
+    // 未解析部分（如 ;49;56t）被回显到命令行。
+    // 正确做法：通过 QEMU Guest Agent 在虚拟机内执行 stty，通知 TTY 层窗口大小变化。
+    this.resizeTimeout = setTimeout(async () => {
+      try {
+        const agent = await QemuAgentManager.acquire('WebTerminal-resize', AgentPriority.LOW, 3000)
+        if (agent) {
+          await agent.execAndGetOutput('/bin/stty', [`rows ${height}`, `cols ${width}`], 3000)
+          await QemuAgentManager.release('WebTerminal-resize')
+          hilog.debug(DOMAIN, 'WebTerminal', 'resize via QGA stty succeeded: %{public}dx%{public}d', width, height)
+        } else {
+          hilog.warn(DOMAIN, 'WebTerminal', 'QGA not available for resize, skipping')
+        }
+      } catch (e) {
+        hilog.error(DOMAIN, 'WebTerminal', 'resize via QGA failed: %{public}s', JSON.stringify(e))
+      }
+    }, 50)
   }
 
   // 性能优化：输出缓冲区

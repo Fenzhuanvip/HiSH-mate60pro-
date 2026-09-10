@@ -18,7 +18,7 @@ export struct EditEmulator {
       this.emulator = {
         id: this.emId,
         name: '',
-        init: '/init',
+        init: '/sbin/init',
         cpu: 4,
         memory: 2048,
         portMapping: [],
