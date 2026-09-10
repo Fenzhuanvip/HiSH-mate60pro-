@@ -142,7 +142,7 @@ function createTerminal() {
     var options = {
         cursorBlink: true,
         allowProposedApi: true,
-        allowTransparency: false,
+        allowTransparency: true,
         fontFamily: 'monospace, "Droid Sans Mono", "Courier New", "Courier", monospace',
         fontSize: 14,
         theme: {
@@ -574,6 +574,15 @@ exports.setBackgroundImage = (dataUrl) => {
     var bg = document.getElementById('terminal-bg');
     if (!bg) return;
     bg.style.backgroundImage = dataUrl ? 'url("' + dataUrl + '")' : 'none';
+    // 有背景图时终端背景设透明，否则恢复实色
+    if (term) {
+        if (dataUrl) {
+            term.options.theme = Object.assign({}, term.options.theme, { background: 'rgba(0,0,0,0)' });
+        } else {
+            var savedBg = document.body.style.backgroundColor || '#000000';
+            term.options.theme = Object.assign({}, term.options.theme, { background: savedBg });
+        }
+    }
 };
 
 exports.setBackgroundBlur = (px) => {
