@@ -202,7 +202,7 @@ struct PcIndex {
           const emulatorToEdit: Emulator = {
             id,
             name: '',
-            init: '/init',
+            init: '/sbin/init',
             cpu: 4,
             memory: 2048,
             portMapping: [],

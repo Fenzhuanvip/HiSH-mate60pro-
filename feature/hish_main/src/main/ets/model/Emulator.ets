@@ -32,7 +32,7 @@ const defaultEmulator: Emulator = {
   name: '默认模拟器',
   cpu: 4,
   memory: 2048,
-  init: '/init',
+  init: '/sbin/init',
   portMapping: [],
   rootVda: '/dev/sda',
   rootFilesystem: 'vm/rootfs_aarch64.qcow2',
