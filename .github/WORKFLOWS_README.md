@@ -9,7 +9,7 @@
 | Job | 产物 |
 |-----|------|
 | `build-kernel` | `kernel_aarch64` |
-| `build-qemu` | `libqemu-system-aarch64.so` / `libqemu-img.so` / `libslirp.so` |
+| `build-qemu` | `libqemu-system-aarch64.so` / `libqemu-img.so` / `libslirp.so` / `libpcre2-8.so` / `libz.so` |
 | `build-rootfs` | `rootfs_aarch64.qcow2` |
 | `build-hap` | artifact `phone-hap` |
 
@@ -18,9 +18,11 @@
 - `libqemu-system-aarch64.so`
 - `libqemu-img.so`
 - `libslirp.so`
+- `libpcre2-8.so`
+- `libz.so`
 - `libhish_main.so`
 
-HarmonyOS 只打包 `lib*.so`。工作流把 slirp 写成 `libslirp.so`，不用 `libslirp.so.0`。
+HarmonyOS 只打包 `lib*.so`。工作流把 slirp / pcre2 写成无版本名，不用 `*.so.0`。
 
 镜像：`ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest`
 

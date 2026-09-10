@@ -77,14 +77,17 @@ jobs:
             feature/hish_main/libs/arm64-v8a/
             feature/hish_main/src/main/resources/rawfile/vm/keymaps/
             feature/hish_main/src/main/resources/rawfile/vm/efi-virtio.rom
-          key: qemu-aarch64-${{ hashFiles('deps/**') }}
+          key: qemu-aarch64-pcre2zlib-${{ hashFiles('deps/**') }}
 
       - name: Check cached QEMU libs
         id: qemu-libs
         run: |
           if [ -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so ] && \
              [ -f feature/hish_main/libs/arm64-v8a/libqemu-img.so ] && \
-             [ -f feature/hish_main/libs/arm64-v8a/libslirp.so ]; then
+             [ -f feature/hish_main/libs/arm64-v8a/libslirp.so ] && \
+             { [ -f feature/hish_main/libs/arm64-v8a/libpcre2-8.so ] || \
+               [ -f feature/hish_main/libs/arm64-v8a/libpcre2-8.so.0 ]; } && \
+             [ -f feature/hish_main/libs/arm64-v8a/libz.so ]; then
             echo "hit=true" >> $GITHUB_OUTPUT
             ls -lh feature/hish_main/libs/arm64-v8a/
           else
@@ -102,7 +105,7 @@ jobs:
           exec > >(tee -a "${GITHUB_WORKSPACE}/qemu-deps.log") 2>&1
           apt-get update
           apt-get install -y cmake autotools-dev autoconf automake \
-            libtool pkg-config flex bison gettext texinfo curl ca-certificates
+            libtool pkg-config flex bison gettext texinfo curl ca-certificates patchelf
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="${HOME}/.local/bin:${PATH}"
           uv python install 3.12
@@ -134,7 +137,17 @@ jobs:
           test -f feature/hish_main/libs/arm64-v8a/libqemu-system-aarch64.so
           test -f feature/hish_main/libs/arm64-v8a/libqemu-img.so
           test -f feature/hish_main/libs/arm64-v8a/libslirp.so
+          test -f feature/hish_main/libs/arm64-v8a/libpcre2-8.so
+          test -f feature/hish_main/libs/arm64-v8a/libz.so
           ls -lh feature/hish_main/libs/arm64-v8a/
+          LIBDIR=feature/hish_main/libs/arm64-v8a
+          NEEDED="$(llvm-readelf -d "$LIBDIR/libqemu-system-aarch64.so" 2>/dev/null || readelf -d "$LIBDIR/libqemu-system-aarch64.so")"
+          echo "$NEEDED" | grep NEEDED
+          echo "$NEEDED" | grep -q 'libpcre2-8\.so' || { echo "qemu still needs versioned pcre2" >&2; exit 1; }
+          echo "$NEEDED" | grep -q '\[libpcre2-8\.so\.0\]' && { echo "qemu DT_NEEDED still libpcre2-8.so.0" >&2; exit 1; }
+          echo "$NEEDED" | grep -q '\[libz\.so\]'
+          test -f "$LIBDIR/libpcre2-8.so"
+          test -f "$LIBDIR/libz.so"
 
       - name: Upload build log
         if: always()
@@ -214,6 +227,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install patchelf
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -eux
+          command -v patchelf >/dev/null 2>&1 || apt-get update && apt-get install -y patchelf
+          patchelf --version
+
       - name: Download kernel artifact
         uses: actions/download-artifact@v4
         with:
@@ -242,6 +263,29 @@ jobs:
           if [ -f libs/arm64-v8a/libslirp.so.0 ] && [ ! -f libs/arm64-v8a/libslirp.so ]; then
             cp -v libs/arm64-v8a/libslirp.so.0 libs/arm64-v8a/libslirp.so
           fi
+          if [ -f libs/arm64-v8a/libpcre2-8.so.0 ] && [ ! -f libs/arm64-v8a/libpcre2-8.so ]; then
+            cp -v libs/arm64-v8a/libpcre2-8.so.0 libs/arm64-v8a/libpcre2-8.so
+          fi
+          if [ -f libs/arm64-v8a/libz.so.1 ] && [ ! -f libs/arm64-v8a/libz.so ]; then
+            cp -v libs/arm64-v8a/libz.so.1 libs/arm64-v8a/libz.so
+          fi
+
+          command -v patchelf >/dev/null 2>&1 || {
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y patchelf
+          }
+          QEMU_SO=libs/arm64-v8a/libqemu-system-aarch64.so
+          if patchelf --print-needed "$QEMU_SO" | grep -qx libpcre2-8.so.0; then
+            patchelf --replace-needed libpcre2-8.so.0 libpcre2-8.so "$QEMU_SO"
+          fi
+          if patchelf --print-needed "$QEMU_SO" | grep -qx libslirp.so.0; then
+            patchelf --replace-needed libslirp.so.0 libslirp.so "$QEMU_SO"
+          fi
+          patchelf --set-soname libpcre2-8.so libs/arm64-v8a/libpcre2-8.so
+          patchelf --set-soname libslirp.so libs/arm64-v8a/libslirp.so
+          patchelf --set-soname libz.so libs/arm64-v8a/libz.so
+          patchelf --print-needed "$QEMU_SO"
 
           mkdir -p feature/hish_main/src/main/libs/arm64-v8a
           mkdir -p feature/hish_main/libs/arm64-v8a
@@ -261,6 +305,8 @@ jobs:
           test -f feature/hish_main/src/main/libs/arm64-v8a/libqemu-system-aarch64.so
           test -f feature/hish_main/src/main/libs/arm64-v8a/libqemu-img.so
           test -f feature/hish_main/src/main/libs/arm64-v8a/libslirp.so
+          test -f feature/hish_main/src/main/libs/arm64-v8a/libpcre2-8.so
+          test -f feature/hish_main/src/main/libs/arm64-v8a/libz.so
           ls -lh feature/hish_main/src/main/libs/arm64-v8a/
 
       - name: Download rootfs artifact
@@ -319,14 +365,24 @@ jobs:
           # 捕获 unzip 列表一次并忽略 unzip 的非零退出码（如 "extra bytes" 警告）。
           # 否则在 `set -o pipefail` 下 `unzip -l | grep -q` 会因 unzip 非零而误判 missing。
           LISTING="$(unzip -l "$HAP_FILE" 2>/dev/null || true)"
-          printf '%s\n' "$LISTING" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libhish_main\.so' || true
-          for so in libqemu-system-aarch64.so libqemu-img.so libslirp.so libhish_main.so; do
+          printf '%s\n' "$LISTING" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libpcre2-8\.so|libz\.so|libhish_main\.so' || true
+          for so in libqemu-system-aarch64.so libqemu-img.so libslirp.so libpcre2-8.so libz.so libhish_main.so; do
             if ! grep -q -- "$so" <<<"$LISTING"; then
               echo "$so missing from HAP" >&2
               printf '%s\n' "$LISTING" | grep -E '\.so' || true
               exit 1
             fi
           done
+          QEMU_TMP=$(mktemp)
+          unzip -p "$HAP_FILE" 'libs/arm64-v8a/libqemu-system-aarch64.so' > "$QEMU_TMP"
+          NEEDED="$(patchelf --print-needed "$QEMU_TMP")"
+          echo "$NEEDED"
+          echo "$NEEDED" | grep -qx libpcre2-8.so
+          echo "$NEEDED" | grep -qx libz.so
+          if echo "$NEEDED" | grep -qx libpcre2-8.so.0; then
+            echo "packed qemu still DT_NEEDED libpcre2-8.so.0" >&2
+            exit 1
+          fi
 
       - name: Upload build log
         if: always()
