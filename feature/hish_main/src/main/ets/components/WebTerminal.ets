@@ -172,6 +172,15 @@ export default struct WebTerminal {
     .bindMenu(this.settingsButtonOptions())
   }
 
+
+  private fixAptMirror() {
+    // 一键换源：将 aliyun 镜像替换为官方 ports.ubuntu.com
+    // 通过 sendInput 发送到终端执行，用户可以看到过程
+    const cmd = `sed -i 's|mirrors.aliyun.com|ports.ubuntu.com|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; apt update\n`
+    this.sendInput(cmd)
+    hilog.info(DOMAIN, 'WebTerminal', 'fixAptMirror: sent mirror fix command')
+  }
+
   private settingsButtonOptions(): MenuElement[] {
     const regularOptions: MenuElement[] = [{
       value: $r('app.string.menu_emulator_management'),
@@ -181,6 +190,10 @@ export default struct WebTerminal {
       value: $r('app.string.menu_shared_folder'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.folder')).fontSize($r('sys.float.Title_S')),
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SharedFolderPage' })
+    }, {
+      value: $r('app.string.menu_fix_mirror'),
+      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.arrow_2_squarepath')).fontSize($r('sys.float.Title_S')),
+      action: () => this.fixAptMirror()
     }, {
       value: $r('app.string.menu_settings'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.gearshape')).fontSize($r('sys.float.Title_S')),
