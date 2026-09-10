@@ -120,13 +120,13 @@ export default struct WebTerminal {
   @Builder
   toggleCtrlKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.ctrlPressed }) {
-      Text(name).fontSize(VKeyFontSize).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
     }
     .height(VKeyHeight)
     .width(VKeyWidth)
     .borderRadius(VKeyRadius)
     .margin(VKeyMargin)
-    .padding({ left: VKeyPadding, right: VKeyPadding })
+    .padding(0)
     .selectedColor($r('sys.color.interactive_active'))
     .onClick(() => action())
   }
@@ -134,13 +134,13 @@ export default struct WebTerminal {
   @Builder
   toggleShiftKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.shiftPressed }) {
-      Text(name).fontSize(VKeyFontSize).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
     }
     .height(VKeyHeight)
     .width(VKeyWidth)
     .borderRadius(VKeyRadius)
     .margin(VKeyMargin)
-    .padding({ left: VKeyPadding, right: VKeyPadding })
+    .padding(0)
     .selectedColor($r('sys.color.interactive_active'))
     .onClick(() => action())
   }
@@ -148,13 +148,13 @@ export default struct WebTerminal {
   @Builder
   toggleFnKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.fnPressed }) {
-      Text(name).fontSize(VKeyFontSize).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
     }
     .height(VKeyHeight)
     .width(VKeyWidth)
     .borderRadius(VKeyRadius)
     .margin(VKeyMargin)
-    .padding({ left: VKeyPadding, right: VKeyPadding })
+    .padding(0)
     .selectedColor($r('sys.color.interactive_active'))
     .onClick(() => action())
   }
