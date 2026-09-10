@@ -101,7 +101,14 @@ jobs:
         run: |
           set -euxo pipefail
           # 使用原版 HiSH 预编译的 QEMU 库，经过充分测试，网络（slirp）行为正确
-          wget -q -O /tmp/libs.zip https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip
+          wget --tries=5 --retry-connrefused -O /tmp/libs.zip \
+            https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip
+          # 校验文件大小（约 30MB）
+          actual_size=$(stat -c%s /tmp/libs.zip)
+          if [ "$actual_size" -lt 25000000 ]; then
+            echo "ERROR: libs.zip too small ($actual_size bytes), download incomplete"
+            exit 1
+          fi
           unzip -o /tmp/libs.zip -d feature/hish_main/libs/
           ls -lh feature/hish_main/libs/arm64-v8a/
 
