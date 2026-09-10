@@ -542,7 +542,7 @@ export default struct SettingsContent {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('sys.color.background'))
+    .backgroundColor($r('app.color.start_window_background'))
   }
 
   @Builder
