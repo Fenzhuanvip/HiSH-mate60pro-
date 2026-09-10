@@ -564,6 +564,10 @@ exports.setItalic = (enabled) => {
 exports.setBackgroundColor = (color) => {
     if (!color) return;
     document.body.style.backgroundColor = color;
+    // 同步更新 xterm.js 终端背景色，否则只有四周变色，终端本身还是黑的
+    if (term) {
+        term.options.theme = Object.assign({}, term.options.theme, { background: color });
+    }
 };
 
 exports.setBackgroundImage = (dataUrl) => {
