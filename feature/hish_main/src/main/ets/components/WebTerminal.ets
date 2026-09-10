@@ -322,7 +322,7 @@ export default struct WebTerminal {
         Row() {
           this.buildVKey('ESC', NormalKeySequences.ESC);
           this.toggleFnKey('FN', () => this.toggleFn());
-          this.buildVKey('HOME', NormalKeySequences.HOME, NormalKeySequences.HOME_APP, 'HOME');
+          this.buildVKey('TAB', NormalKeySequences.TAB, NormalKeySequences.TAB, 'TAB');
 
           Row().layoutWeight(1);
 
@@ -336,9 +336,8 @@ export default struct WebTerminal {
         .margin({ left: 5, right: 5 })
 
         Row() {
-          this.buildVKey('TAB', NormalKeySequences.TAB, NormalKeySequences.TAB, 'TAB');
           this.toggleCtrlKey('CTRL', () => this.toggleCtrl());
-          this.buildVKey('END', NormalKeySequences.END, NormalKeySequences.END_APP, 'END');
+          this.buildVKey('/', '/');
 
           Row().layoutWeight(1);
 
