@@ -101,7 +101,7 @@ jobs:
         run: |
           set -euxo pipefail
           # 使用原版 HiSH 预编译的 QEMU 库，经过充分测试，网络（slirp）行为正确
-          curl -fsSL -o /tmp/libs.zip https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip
+          wget -q -O /tmp/libs.zip https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip
           unzip -o /tmp/libs.zip -d feature/hish_main/libs/
           ls -lh feature/hish_main/libs/arm64-v8a/
 
