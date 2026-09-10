@@ -1691,6 +1691,10 @@
     {
       "name": "guest_status_bar_toast",
       "value": "开启“状态栏”需要确保模拟器中的 qemu-guest-agent 正常运行"
+    },
+    {
+      "name": "menu_fix_mirror",
+      "value": "一键换源"
     }
   ]
 }
