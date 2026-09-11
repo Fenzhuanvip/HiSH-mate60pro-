@@ -152,9 +152,15 @@ function createTerminal() {
         },
         screenReaderMode: false,
         scrollback: 1500,
-        fastScroll: true,
         drawBoldText: true,
         disableStdin: false,
+        windowOptions: {
+            getWinSizeChars: true,
+            getWinSizePixels: true,
+            getCellSizePixels: true,
+            getScreenSizeChars: true,
+            getScreenSizePixels: true
+        }
     };
 
     term = new Terminal(options);
@@ -465,22 +471,15 @@ exports.write = (data, applicationMode) => {
     }
 };
 
-// 复用的 Uint8Array 转换缓冲，避免每次 write 都重新分配
-let _writeBuf = new Uint8Array(0);
-
 exports.writeBase64 = (base64Data, applicationMode) => {
     try {
         const binaryString = atob(base64Data);
         const len = binaryString.length;
-        if (_writeBuf.length < len) {
-            _writeBuf = new Uint8Array(len);
-        }
+        const buf = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
-            _writeBuf[i] = binaryString.charCodeAt(i);
+            buf[i] = binaryString.charCodeAt(i);
         }
-        // 使用 subarray 避免创建新的 Uint8Array
-        term.write(_writeBuf.subarray(0, len));
-
+        term.write(buf);
         if (term.modes.applicationCursorKeysMode !== applicationMode) {
             if (native && native.setApplicationMode) {
                 native.setApplicationMode(term.modes.applicationCursorKeysMode);

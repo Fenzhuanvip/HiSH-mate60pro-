@@ -3,16 +3,29 @@ export interface VirtualKeyMetrics {
   padding: number
   height: number
   width: number
+  wideWidth: number
   fontSize: number
   radius: number
 }
 
 export function getVirtualKeyMetrics(deviceType: string): VirtualKeyMetrics {
+  if (deviceType === 'phone') {
+    return {
+      margin: 1,
+      padding: 0,
+      height: 32,
+      width: 38,
+      wideWidth: 48,
+      fontSize: 10,
+      radius: 6
+    }
+  }
   return {
     margin: 1,
     padding: 2,
     height: 28,
     width: 42,
+    wideWidth: 48,
     fontSize: 10,
     radius: 5
   }
