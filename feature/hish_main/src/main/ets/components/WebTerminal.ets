@@ -25,6 +25,7 @@ const VKeyMargin = VKeyMetrics.margin;
 const VKeyPadding = VKeyMetrics.padding;
 const VKeyHeight = VKeyMetrics.height;
 const VKeyWidth = VKeyMetrics.width;
+const VKeyWideWidth = VKeyMetrics.wideWidth;
 const VKeyFontSize = VKeyMetrics.fontSize;
 const VKeyRadius = VKeyMetrics.radius;
 
@@ -47,8 +48,8 @@ export default struct WebTerminal {
   @Watch('onUserFontsChanged') @StorageProp(appOption.terminalUserFonts) termUserFonts: UserFont[] = []
   webviewController: WebviewController = new webview.WebviewController()
   utf8Decoder = util.TextDecoder.create('utf-8', { ignoreBOM: true })
-  resizeTimeout?: number = undefined
   areaChangeFitTimer?: number = undefined
+  resizeTimeout?: number = undefined
   applicationMode: boolean = false
   
 
@@ -120,10 +121,15 @@ export default struct WebTerminal {
   @Builder
   toggleCtrlKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.ctrlPressed }) {
-      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
+      Text(name)
+        .fontSize(VKeyFontSize)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('sys.color.white'))
+        .maxLines(1)
+        .textAlign(TextAlign.Center)
     }
     .height(VKeyHeight)
-    .width(VKeyWidth)
+    .width(VKeyWideWidth)
     .borderRadius(VKeyRadius)
     .margin(VKeyMargin)
     .padding(0)
@@ -134,10 +140,15 @@ export default struct WebTerminal {
   @Builder
   toggleShiftKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.shiftPressed }) {
-      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
+      Text(name)
+        .fontSize(VKeyFontSize)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('sys.color.white'))
+        .maxLines(1)
+        .textAlign(TextAlign.Center)
     }
     .height(VKeyHeight)
-    .width(VKeyWidth)
+    .width(VKeyWideWidth)
     .borderRadius(VKeyRadius)
     .margin(VKeyMargin)
     .padding(0)
@@ -148,7 +159,12 @@ export default struct WebTerminal {
   @Builder
   toggleFnKey(name: string, action: () => void) {
     Toggle({ type: ToggleType.Button, isOn: this.fnPressed }) {
-      Text(name).fontSize(VKeyFontSize - 1).fontWeight(FontWeight.Medium).fontColor($r('sys.color.white')).maxLines(1)
+      Text(name)
+        .fontSize(VKeyFontSize)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('sys.color.white'))
+        .maxLines(1)
+        .textAlign(TextAlign.Center)
     }
     .height(VKeyHeight)
     .width(VKeyWidth)
@@ -457,10 +473,6 @@ export default struct WebTerminal {
     if (this.resizeTimeout !== undefined) {
       clearTimeout(this.resizeTimeout!!)
     }
-    // 修复：不再通过 sendInput 发送 XTWINOPS 转义序列 \x1b[8;rows;cols;t
-    // 该序列是给终端模拟器解释的，直接作为键盘输入发给 shell 会导致
-    // 未解析部分（如 ;49;56t）被回显到命令行。
-    // 正确做法：通过 QEMU Guest Agent 在虚拟机内执行 stty，通知 TTY 层窗口大小变化。
     this.resizeTimeout = setTimeout(async () => {
       try {
         const agent = await QemuAgentManager.acquire('WebTerminal-resize', AgentPriority.LOW, 3000)
@@ -477,23 +489,21 @@ export default struct WebTerminal {
     }, 50)
   }
 
-  // 性能优化：输出缓冲区
   private pendingChunks: Uint8Array[] = [];
   private flushTimeoutID: number | undefined = undefined;
+  private writeBusy: boolean = false;
   private readonly FLUSH_INTERVAL = 8;
-  // 复用编解码器实例，避免高频 flush 时反复创建
+  private readonly WRITE_SLICE = 2048;
   private base64Helper = new util.Base64Helper();
   private utf8Encoder = util.TextEncoder.create('utf-8');
 
   private onData(ab: ArrayBuffer) {
     try {
-      // 将收到的数据块加入队列
       this.pendingChunks.push(new Uint8Array(ab));
-
-      // 如果没有正在等待的 Flush 任务，则调度一个
       if (this.flushTimeoutID === undefined) {
         this.flushTimeoutID = setTimeout(() => {
-          this.flushData();
+          this.flushTimeoutID = undefined;
+          void this.flushData();
         }, this.FLUSH_INTERVAL);
       }
     } catch (e) {
@@ -501,51 +511,71 @@ export default struct WebTerminal {
     }
   }
 
-  private flushData() {
-    this.flushTimeoutID = undefined;
-
-    if (this.pendingChunks.length === 0) return;
-
+  private async flushData(): Promise<void> {
+    if (this.writeBusy) {
+      return;
+    }
+    if (this.pendingChunks.length === 0) {
+      return;
+    }
+    this.writeBusy = true;
     try {
-      // 1. 计算总长度
-      let totalLength = 0;
-      for (const chunk of this.pendingChunks) {
-        totalLength += chunk.length;
+      while (this.pendingChunks.length > 0) {
+        let totalLength = 0;
+        for (const chunk of this.pendingChunks) {
+          totalLength += chunk.length;
+        }
+        const merged = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of this.pendingChunks) {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        }
+        this.pendingChunks = [];
+
+        if (merged.length >= 6 &&
+          merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
+          merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A
+        ) {
+          const clearBytes = this.utf8Encoder.encodeInto('\x1b[3J');
+          await this.writeBytesToTerm(clearBytes);
+        }
+
+        let start = 0;
+        while (start < merged.length) {
+          let end = Math.min(start + this.WRITE_SLICE, merged.length);
+          if (end < merged.length) {
+            let i = end - 1;
+            while (i > start && merged[i] !== 0x1B && end - i < 48) {
+              i--;
+            }
+            if (merged[i] === 0x1B && i > start) {
+              end = i;
+            }
+          }
+          await this.writeBytesToTerm(merged.subarray(start, end));
+          start = end;
+        }
       }
-
-      // 2. 合并所有 Chunk
-      const merged = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of this.pendingChunks) {
-        merged.set(chunk, offset);
-        offset += chunk.length;
-      }
-
-      // 清空缓冲区
-      this.pendingChunks = [];
-
-      // 3. 检测清屏信号
-      // 现在数据是原始字节，检测真正的转义序列 ESC[H ESC[J (6 字节)
-      // \x1b[H 移动光标到左上角，\x1b[J 清屏（TUI 应用常用的清屏组合）
-      if (merged.length >= 6 &&
-        merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 && // ESC [ H
-        merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A    // ESC [ J
-      ) {
-        const clearCmd = '\x1b[3J';
-        const clearBytes = this.utf8Encoder.encodeInto(clearCmd);
-        const clearBase64 = this.base64Helper.encodeToStringSync(clearBytes);
-        this.webviewController.runJavaScript(`exports.writeBase64("${clearBase64}", ${this.applicationMode})`);
-      }
-
-      // 4. 发送合并后的数据
-      const base64 = this.base64Helper.encodeToStringSync(merged);
-      this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`);
-
     } catch (e) {
       hilog.error(DOMAIN, 'WebTerminal', 'flushData failed: %{public}s', JSON.stringify(e));
-      // 出错时也要清空缓冲区，避免积压
       this.pendingChunks = [];
+    } finally {
+      this.writeBusy = false;
+      if (this.pendingChunks.length > 0) {
+        void this.flushData();
+      }
     }
+  }
+
+  private async writeBytesToTerm(bytes: Uint8Array): Promise<void> {
+    if (bytes.length === 0) {
+      return;
+    }
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    const base64 = this.base64Helper.encodeToStringSync(copy);
+    await this.webviewController.runJavaScript(`exports.writeBase64("${base64}", ${this.applicationMode})`);
   }
 
   private async onShutdown() {

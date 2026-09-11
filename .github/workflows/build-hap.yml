@@ -193,9 +193,9 @@ jobs:
         continue-on-error: true
         with:
           path: rootfs_aarch64.qcow2
-          key: rootfs-alpine3.22-v3-${{ hashFiles('**/alpine-minirootfs*') }}
+          key: rootfs-alpine3.22-serialinit-2
           restore-keys: |
-            rootfs-alpine3.22-
+            rootfs-alpine3.22-serialinit-
 
       - name: Install tools
         if: steps.cache-rootfs.outputs.cache-hit != 'true'
@@ -213,15 +213,27 @@ jobs:
       - name: Create rootfs image
         if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
+          set -eux
+          ln -sf /sbin/init alpine/init
+          if [ -f alpine/etc/inittab ]; then
+            grep -q 'ttyAMA0' alpine/etc/inittab || \
+              echo 'ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100' >> alpine/etc/inittab
+          fi
+          if [ -f alpine/etc/shadow ]; then
+            sed -i 's|^root:[^:]*:|root::|' alpine/etc/shadow
+          fi
+          if [ -f alpine/etc/securetty ]; then
+            grep -q '^ttyAMA0$' alpine/etc/securetty || echo ttyAMA0 >> alpine/etc/securetty
+          fi
+          mkdir -p alpine/root alpine/etc/profile.d
+          printf '%s\n' 'export TERM=xterm-256color' 'export COLORTERM=truecolor' > alpine/etc/profile.d/hish-term.sh
+          chmod 0644 alpine/etc/profile.d/hish-term.sh
           qemu-img create -f raw rootfs.img 8G
           mkfs.ext4 rootfs.img
           sudo mkdir -p /mnt/rootfs
           sudo mount -o loop rootfs.img /mnt/rootfs
-          sudo cp -a alpine/* /mnt/rootfs/
-          # Alpine minirootfs 没有 /init（那是 initramfs 的），
-          # 也没有 openrc。创建一个简单的 /init 脚本直接起 shell，
-          # 不走 busybox init（避免读 /etc/inittab 里引用的 openrc）。
-          printf '#!/bin/sh\nmount -t proc proc /proc 2>/dev/null\nmount -t sysfs sysfs /sys 2>/dev/null\nmount -t devtmpfs devtmpfs /dev 2>/dev/null\nexec /bin/sh\n' | sudo tee /mnt/rootfs/init
+          sudo cp -a alpine/. /mnt/rootfs/
+          printf '#!/bin/sh\nmount -t proc proc /proc 2>/dev/null\nmount -t sysfs sysfs /sys 2>/dev/null\nmount -t devtmpfs devtmpfs /dev 2>/dev/null\nexport HOME=/root\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\nexport TERM=xterm-256color\nexport COLORTERM=truecolor\ncd /root 2>/dev/null || cd /\nexec /bin/sh\n' | sudo tee /mnt/rootfs/init
           sudo chmod +x /mnt/rootfs/init
           sudo umount /mnt/rootfs
           qemu-img convert -p -f raw -O qcow2 rootfs.img rootfs_aarch64.qcow2
