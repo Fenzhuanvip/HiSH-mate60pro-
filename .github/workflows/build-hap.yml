@@ -284,7 +284,26 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           set -eux
-          command -v patchelf >/dev/null 2>&1 || apt-get update && apt-get install -y patchelf
+          if ! command -v patchelf >/dev/null 2>&1; then
+            installed=0
+            for i in 1 2 3 4 5; do
+              apt-get update || true
+              if apt-get install -y --fix-missing patchelf; then
+                installed=1
+                break
+              fi
+              echo "apt patchelf failed (attempt $i), retrying in 15s"
+              sleep 15
+            done
+            if [ "$installed" != 1 ]; then
+              curl -fsSL -o /tmp/patchelf.tgz \
+                https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz
+              mkdir -p /tmp/patchelf-dist
+              tar -xzf /tmp/patchelf.tgz -C /tmp/patchelf-dist
+              install -m 0755 /tmp/patchelf-dist/bin/patchelf /usr/local/bin/patchelf
+            fi
+          fi
+          command -v patchelf
           patchelf --version
 
       - name: Download kernel artifact
@@ -322,11 +341,25 @@ jobs:
             cp -v libs/arm64-v8a/libz.so.1 libs/arm64-v8a/libz.so
           fi
 
-          command -v patchelf >/dev/null 2>&1 || {
+          if ! command -v patchelf >/dev/null 2>&1; then
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y patchelf
-          }
+            installed=0
+            for i in 1 2 3; do
+              apt-get update || true
+              if apt-get install -y --fix-missing patchelf; then
+                installed=1
+                break
+              fi
+              sleep 10
+            done
+            if [ "$installed" != 1 ]; then
+              curl -fsSL -o /tmp/patchelf.tgz \
+                https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz
+              mkdir -p /tmp/patchelf-dist
+              tar -xzf /tmp/patchelf.tgz -C /tmp/patchelf-dist
+              install -m 0755 /tmp/patchelf-dist/bin/patchelf /usr/local/bin/patchelf
+            fi
+          fi
           QEMU_SO=libs/arm64-v8a/libqemu-system-aarch64.so
           if patchelf --print-needed "$QEMU_SO" | grep -qx libpcre2-8.so.0; then
             patchelf --replace-needed libpcre2-8.so.0 libpcre2-8.so "$QEMU_SO"
