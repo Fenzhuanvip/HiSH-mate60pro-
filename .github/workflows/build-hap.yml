@@ -104,8 +104,18 @@ jobs:
           set -euxo pipefail
           exec > >(tee -a "${GITHUB_WORKSPACE}/qemu-deps.log") 2>&1
           apt-get update
-          apt-get install -y cmake autotools-dev autoconf automake \
-            libtool pkg-config flex bison gettext texinfo curl ca-certificates patchelf
+          for i in 1 2 3 4 5; do
+            if apt-get install -y --fix-missing cmake autotools-dev autoconf automake \
+              libtool pkg-config flex bison gettext texinfo curl ca-certificates patchelf; then
+              break
+            fi
+            echo "apt-get install failed (attempt $i), retrying in 20s"
+            sleep 20
+            apt-get update
+            if [ "$i" = 5 ]; then
+              exit 1
+            fi
+          done
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="${HOME}/.local/bin:${PATH}"
           uv python install 3.12
@@ -193,7 +203,7 @@ jobs:
         continue-on-error: true
         with:
           path: rootfs_aarch64.qcow2
-          key: rootfs-alpine3.22-serialinit-2
+          key: rootfs-alpine3.22-serialinit-3
           restore-keys: |
             rootfs-alpine3.22-serialinit-
 
@@ -214,7 +224,19 @@ jobs:
         if: steps.cache-rootfs.outputs.cache-hit != 'true'
         run: |
           set -eux
-          ln -sf /sbin/init alpine/init
+          rm -f alpine/init
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'mount -t proc proc /proc 2>/dev/null || true' \
+            'mount -t sysfs sysfs /sys 2>/dev/null || true' \
+            'mount -t devtmpfs devtmpfs /dev 2>/dev/null || true' \
+            'export HOME=/root' \
+            'export PATH=/usr/sbin:/usr/bin:/sbin:/bin' \
+            'export TERM=xterm-256color' \
+            'export COLORTERM=truecolor' \
+            'cd /root 2>/dev/null || cd /' \
+            'exec /bin/sh' > alpine/init
+          chmod 0755 alpine/init
           if [ -f alpine/etc/inittab ]; then
             grep -q 'ttyAMA0' alpine/etc/inittab || \
               echo 'ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100' >> alpine/etc/inittab
@@ -233,8 +255,7 @@ jobs:
           sudo mkdir -p /mnt/rootfs
           sudo mount -o loop rootfs.img /mnt/rootfs
           sudo cp -a alpine/. /mnt/rootfs/
-          printf '#!/bin/sh\nmount -t proc proc /proc 2>/dev/null\nmount -t sysfs sysfs /sys 2>/dev/null\nmount -t devtmpfs devtmpfs /dev 2>/dev/null\nexport HOME=/root\nexport PATH=/usr/sbin:/usr/bin:/sbin:/bin\nexport TERM=xterm-256color\nexport COLORTERM=truecolor\ncd /root 2>/dev/null || cd /\nexec /bin/sh\n' | sudo tee /mnt/rootfs/init
-          sudo chmod +x /mnt/rootfs/init
+          test -f /mnt/rootfs/init
           sudo umount /mnt/rootfs
           qemu-img convert -p -f raw -O qcow2 rootfs.img rootfs_aarch64.qcow2
 
