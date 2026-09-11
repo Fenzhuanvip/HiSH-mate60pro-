@@ -192,7 +192,7 @@ export default struct WebTerminal {
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SharedFolderPage' })
     }, {
       value: $r('app.string.menu_fix_mirror'),
-      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.globe')).fontSize($r('sys.float.Title_S')),
+      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.arrow_clockwise')).fontSize($r('sys.float.Title_S')),
       action: () => this.fixAptMirror()
     }, {
       value: $r('app.string.menu_settings'),
