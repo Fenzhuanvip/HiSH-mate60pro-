@@ -109,7 +109,7 @@ export default struct WebTerminal {
       .width(VKeyWidth)
       .borderRadius(VKeyRadius)
       .fontSize(VKeyFontSize)
-      .fontColor($r('sys.color.white'))
+      .fontColor(this.vKeyFg())
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
       
@@ -128,7 +128,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -147,7 +147,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -166,7 +166,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -182,7 +182,7 @@ export default struct WebTerminal {
   @Builder
   settingsButton() {
     Button({ buttonStyle: ButtonStyleMode.TEXTUAL }) {
-      Image($r('app.media.gearshape')).width(16).height(16).padding(0)
+      Image($r('app.media.gearshape')).width(16).height(16).padding(0).fillColor(this.vKeyFg())
     }
     .height(VKeyHeight)
     .width(VKeyHeight)
@@ -230,15 +230,79 @@ export default struct WebTerminal {
       .borderRadius(VKeyRadius)
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
-      .fontColor($r('sys.color.white'))
+      .fontColor(this.vKeyFg())
       
       .onClick(() => {
         this.showVirtKey = false
       })
   }
 
+  private hasWallpaper(): boolean {
+    return this.termBgImage.length > 0
+  }
+
+  private colorLuminance(color: string): number {
+    let hex = color.trim()
+    if (hex.startsWith('#')) {
+      hex = hex.substring(1)
+    }
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+    }
+    if (hex.length < 6) {
+      return 0
+    }
+    const r = Number.parseInt(hex.substring(0, 2), 16) / 255
+    const g = Number.parseInt(hex.substring(2, 4), 16) / 255
+    const b = Number.parseInt(hex.substring(4, 6), 16) / 255
+    if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) {
+      return 0
+    }
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+
+  private isLightTheme(): boolean {
+    if (this.hasWallpaper()) {
+      return false
+    }
+    return this.colorLuminance(this.termBgColor) > 0.55
+  }
+
+  private vKeyFg(): string {
+    return this.isLightTheme() ? '#1A1A1A' : '#FFFFFF'
+  }
+
+  private vKeyBarBg(): string {
+    if (this.hasWallpaper()) {
+      return '#66000000'
+    }
+    return this.isLightTheme() ? '#99FFFFFF' : '#66000000'
+  }
+
+  private wallpaperSrc(): string {
+    const filesDir = AppStorage.get<string>(appOption.appFilesDir) ?? ''
+    return 'file://' + filesDir + '/terminal_bg/' + this.termBgImage
+  }
+
+  @Builder
+  buildTerminalBackdrop() {
+    if (this.hasWallpaper()) {
+      Image(this.wallpaperSrc())
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .blur(this.termBgBlur)
+    } else {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.termBgColor)
+    }
+  }
+
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
+      this.buildTerminalBackdrop()
       Column() {
         Web({
           src: $rawfile('term/term.html'),
@@ -270,7 +334,7 @@ export default struct WebTerminal {
           }
         }`
           })
-          .backgroundColor('#000')
+          .backgroundColor(this.hasWallpaper() ? Color.Transparent : this.termBgColor)
           .width('100%')
           .layoutWeight(1)
           .onAreaChange(() => {
@@ -306,7 +370,7 @@ export default struct WebTerminal {
         .height(20)
         .fontSize(12)
         .borderRadius(VKeyRadius)
-        .fontColor('#888')
+        .fontColor(this.vKeyFg())
         .padding({ left: VKeyPadding, right: VKeyPadding })
         
         .onClick(() => {
@@ -385,7 +449,7 @@ export default struct WebTerminal {
     }
     .width('100%')
     .padding({ top: 4, bottom: this.softKeyboardVisible ? 0 : 4 })
-    .backgroundColor(this.termBgColor ? this.termBgColor + 'E6' : '#E6000000')
+    .backgroundColor(this.vKeyBarBg())
   }
 
   async saveShowVirtKey() {

@@ -592,28 +592,61 @@ exports.setItalic = (enabled) => {
 
 // --- Terminal appearance: background color / image / gaussian blur ---
 
+var currentBgColor = '#000000';
+
+function hexLuminance(color) {
+    var hex = String(color || '').trim();
+    if (hex.charAt(0) === '#') {
+        hex = hex.slice(1);
+    }
+    if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    if (hex.length < 6) {
+        return 0;
+    }
+    var r = parseInt(hex.slice(0, 2), 16) / 255;
+    var g = parseInt(hex.slice(2, 4), 16) / 255;
+    var b = parseInt(hex.slice(4, 6), 16) / 255;
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+        return 0;
+    }
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function pickForeground(color) {
+    return hexLuminance(color) > 0.55 ? '#000000' : '#ffffff';
+}
+
+function applyTerminalTheme(color, transparent) {
+    currentBgColor = color || currentBgColor || '#000000';
+    var fg = pickForeground(currentBgColor);
+    var bg = transparent ? 'rgba(0,0,0,0)' : currentBgColor;
+    document.body.style.backgroundColor = transparent ? 'transparent' : currentBgColor;
+    document.body.style.color = fg;
+    if (term) {
+        term.options.theme = Object.assign({}, term.options.theme, {
+            background: bg,
+            foreground: fg,
+            cursor: fg,
+            cursorAccent: currentBgColor,
+            selectionBackground: fg === '#000000' ? '#00000033' : '#ffffff33'
+        });
+    }
+}
+
 exports.setBackgroundColor = (color) => {
     if (!color) return;
-    document.body.style.backgroundColor = color;
-    // 同步更新 xterm.js 终端背景色，否则只有四周变色，终端本身还是黑的
-    if (term) {
-        term.options.theme = Object.assign({}, term.options.theme, { background: color });
-    }
+    var bgEl = document.getElementById('terminal-bg');
+    var hasImage = !!(bgEl && bgEl.style.backgroundImage && bgEl.style.backgroundImage !== 'none');
+    applyTerminalTheme(color, hasImage);
 };
 
 exports.setBackgroundImage = (dataUrl) => {
     var bg = document.getElementById('terminal-bg');
     if (!bg) return;
     bg.style.backgroundImage = dataUrl ? 'url("' + dataUrl + '")' : 'none';
-    // 有背景图时终端背景设透明，否则恢复实色
-    if (term) {
-        if (dataUrl) {
-            term.options.theme = Object.assign({}, term.options.theme, { background: 'rgba(0,0,0,0)' });
-        } else {
-            var savedBg = document.body.style.backgroundColor || '#000000';
-            term.options.theme = Object.assign({}, term.options.theme, { background: savedBg });
-        }
-    }
+    applyTerminalTheme(currentBgColor, !!dataUrl);
 };
 
 exports.setBackgroundBlur = (px) => {
