@@ -1,0 +1,4 @@
+{
+  "name": "libcodexhost.so",
+  "types": "./index.d.ts"
+}
