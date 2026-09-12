@@ -312,11 +312,13 @@ jobs:
           HOME: /root
         run: |
           set -eux
+          # Install host build tools (cc, gcc, crt objects, libc) for Rust build scripts
+          apt-get update && apt-get install -y build-essential
           if command -v cargo >/dev/null 2>&1; then
             echo "cargo already available"
           else
             if ! command -v curl >/dev/null 2>&1; then
-              apt-get update && apt-get install -y curl
+              apt-get install -y curl
             fi
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.93.0 -y
             source "$HOME/.cargo/env"
@@ -324,6 +326,7 @@ jobs:
           rustup target add aarch64-unknown-linux-ohos
           cargo --version
           rustc --version
+          cc --version
 
       - name: Create Linux toolchain wrappers
         run: |
@@ -367,15 +370,11 @@ jobs:
           export PATH="$OHOS_NATIVE/build-tools/cmake/bin:$OHOS_NATIVE/llvm/bin:$PATH"
 
           # Host compiler for build scripts (proc-macro crates compile for x86_64 host)
-          export CC="$OHOS_NATIVE/llvm/bin/clang"
-          export CXX="$OHOS_NATIVE/llvm/bin/clang++"
+          # build-essential (installed earlier) provides cc/gcc with proper crt objects
+          export CC="cc"
+          export CXX="c++"
           export AR="$OHOS_NATIVE/llvm/bin/llvm-ar"
           export RANLIB="$OHOS_NATIVE/llvm/bin/llvm-ranlib"
-          # Rust defaults to 'cc' as host linker; create symlink so it resolves
-          ln -sf "$OHOS_NATIVE/llvm/bin/clang" /usr/local/bin/cc
-          ln -sf "$OHOS_NATIVE/llvm/bin/clang++" /usr/local/bin/c++
-          ln -sf "$OHOS_NATIVE/llvm/bin/clang" /usr/local/bin/gcc
-          ln -sf "$OHOS_NATIVE/llvm/bin/clang++" /usr/local/bin/g++
 
           cd "$RUST_WS"
           cargo build --package codex-ohos-host --target aarch64-unknown-linux-ohos 2>&1 | tee /tmp/codex-build.log
