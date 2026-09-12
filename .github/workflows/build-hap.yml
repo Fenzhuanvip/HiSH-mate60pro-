@@ -371,6 +371,11 @@ jobs:
           export CXX="$OHOS_NATIVE/llvm/bin/clang++"
           export AR="$OHOS_NATIVE/llvm/bin/llvm-ar"
           export RANLIB="$OHOS_NATIVE/llvm/bin/llvm-ranlib"
+          # Rust defaults to 'cc' as host linker; create symlink so it resolves
+          ln -sf "$OHOS_NATIVE/llvm/bin/clang" /usr/local/bin/cc
+          ln -sf "$OHOS_NATIVE/llvm/bin/clang++" /usr/local/bin/c++
+          ln -sf "$OHOS_NATIVE/llvm/bin/clang" /usr/local/bin/gcc
+          ln -sf "$OHOS_NATIVE/llvm/bin/clang++" /usr/local/bin/g++
 
           cd "$RUST_WS"
           cargo build --package codex-ohos-host --target aarch64-unknown-linux-ohos 2>&1 | tee /tmp/codex-build.log
