@@ -459,9 +459,20 @@ function setupMirroredInputFix(termEl) {
 // --- Implementation of exports matching term.js.bak ---
 
 // exports.write(data) - Write data from VM to terminal
+// Optimized: reduced Promise chain overhead for high-throughput scenarios
 var writeChain = Promise.resolve();
+var writeChainDepth = 0;
+var MAX_CHAIN_DEPTH = 50;
 
 function enqueueTermWrite(buf, applicationMode) {
+    writeChainDepth++;
+    // If chain is getting too deep (heavy output), collapse pending writes
+    if (writeChainDepth > MAX_CHAIN_DEPTH) {
+        // Just do a fire-and-forget write to drain the backlog
+        try { term.write(buf); } catch(e) {}
+        writeChainDepth--;
+        return Promise.resolve('ok');
+    }
     writeChain = writeChain.catch(function () {}).then(function () {
         return new Promise(function (resolve) {
             try {
@@ -473,10 +484,12 @@ function enqueueTermWrite(buf, applicationMode) {
                             }
                         }
                     } catch (e2) {}
+                    writeChainDepth--;
                     resolve();
                 });
             } catch (e) {
                 console.error("term.write failed", e);
+                writeChainDepth--;
                 resolve();
             }
         });
