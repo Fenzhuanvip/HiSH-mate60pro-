@@ -310,8 +310,15 @@ jobs:
       - name: Install Rust toolchain
         run: |
           set -eux
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.93.0 -y
-          source "$HOME/.cargo/env"
+          if command -v cargo >/dev/null 2>&1; then
+            echo "cargo already available"
+          else
+            if ! command -v curl >/dev/null 2>&1; then
+              apt-get update && apt-get install -y curl
+            fi
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.93.0 -y
+            source "$HOME/.cargo/env"
+          fi
           rustup target add aarch64-unknown-linux-ohos
           cargo --version
           rustc --version
@@ -334,7 +341,7 @@ jobs:
       - name: Build codex-ohos-host (aarch64)
         run: |
           set -eux
-          source "$HOME/.cargo/env"
+          if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; fi
           OHOS_NATIVE="${{ steps.sdk.outputs.native }}"
           RUST_WS="/tmp/arkpilot/codex-main/codex-rs"
 
