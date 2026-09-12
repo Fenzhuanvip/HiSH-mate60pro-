@@ -9,7 +9,12 @@ var currentFontFamily = 'Default';
 
 // Initialize Addons (constructed upfront; attached to term in createTerminal)
 const fitAddon = new FitAddon.FitAddon();
-const webglAddon = new WebglAddon.WebglAddon();
+let webglAddon = null;
+try {
+    webglAddon = new WebglAddon.WebglAddon();
+} catch (e) {
+    console.warn('WebglAddon not available, using DOM renderer', e);
+}
 
 // Initialize exports for ArkTS to call
 window.exports = {};
@@ -145,16 +150,18 @@ function createTerminal() {
         allowTransparency: true,
         fontFamily: 'monospace, "Droid Sans Mono", "Courier New", "Courier", monospace',
         fontSize: 14,
-        minimumContrastRatio: 7,
+        minimumContrastRatio: 1,
         theme: {
             background: '#000000',
             foreground: '#ffffff',
             cursor: '#ffffff'
         },
         screenReaderMode: false,
-        scrollback: 1500,
+        scrollback: 10000,
         drawBoldText: true,
         disableStdin: false,
+        windowsMode: false,
+        fastScrollModifier: 'alt',
         windowOptions: {
             getWinSizeChars: true,
             getWinSizePixels: true,
@@ -274,7 +281,7 @@ window.onload = function () {
             }
 
             // 4. Load WebGL (unavailable in this DOM-renderer-only build)
-            if (shouldEnableWebGL) {
+            if (shouldEnableWebGL && webglAddon) {
                 try {
                     webglAddon.onContextLoss(e => {
                         webglAddon.dispose();
@@ -282,7 +289,7 @@ window.onload = function () {
                     term.loadAddon(webglAddon);
                     console.log("WebGL renderer loaded");
                 } catch (e) {
-                    console.warn("WebGL renderer failed to load, falling back to canvas", e);
+                    console.warn("WebGL renderer failed to load, falling back to DOM", e);
                 }
             }
 
@@ -579,12 +586,39 @@ exports.setItalic = (enabled) => {
 
 // --- Terminal appearance: background color / image / gaussian blur ---
 
+// 根据背景色亮度选择前景色：亮背景用深色字，暗背景用浅色字，避免白底白字看不见
+function pickContrastForeground(hex) {
+    try {
+        var h = String(hex).replace('#', '');
+        if (h.length === 8) {
+            h = h.slice(2); // 去掉 alpha 前缀
+        }
+        if (h.length !== 6) {
+            return '#ffffff';
+        }
+        var r = parseInt(h.slice(0, 2), 16);
+        var g = parseInt(h.slice(2, 4), 16);
+        var b = parseInt(h.slice(4, 6), 16);
+        // 感知亮度（YIQ），>150 视为亮背景
+        var brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness > 150 ? '#1a1a1a' : '#ffffff';
+    } catch (e) {
+        return '#ffffff';
+    }
+}
+
 exports.setBackgroundColor = (color) => {
     if (!color) return;
     document.body.style.backgroundColor = color;
     // 同步更新 xterm.js 终端背景色，否则只有四周变色，终端本身还是黑的
+    // 同时按背景亮度自适应前景色，避免白色背景 + 白色字体导致文字不可见
     if (term) {
-        term.options.theme = Object.assign({}, term.options.theme, { background: color });
+        var fg = pickContrastForeground(color);
+        term.options.theme = Object.assign({}, term.options.theme, {
+            background: color,
+            foreground: fg,
+            cursor: fg
+        });
     }
 };
 
@@ -598,7 +632,12 @@ exports.setBackgroundImage = (dataUrl) => {
             term.options.theme = Object.assign({}, term.options.theme, { background: 'rgba(0,0,0,0)' });
         } else {
             var savedBg = document.body.style.backgroundColor || '#000000';
-            term.options.theme = Object.assign({}, term.options.theme, { background: savedBg });
+            var fg = pickContrastForeground(savedBg);
+            term.options.theme = Object.assign({}, term.options.theme, {
+                background: savedBg,
+                foreground: fg,
+                cursor: fg
+            });
         }
     }
 };

@@ -967,7 +967,9 @@ void send_data_to_callback(const uint8_t *data, size_t len, napi_threadsafe_func
         return;
     data_buffer *pbuf = new data_buffer{.buf = new char[len], .size = len};
     memcpy(pbuf->buf, data, len);
-    napi_status st = napi_call_threadsafe_function(callback, pbuf, napi_tsfn_blocking);
+    // 非阻塞投递：避免串口线程被阻塞拖慢（blocking 会导致 QEMU 写串口阻塞 → 虚拟机卡顿）。
+    // 队列满时丢弃该块，TUI 应用会重绘补全，不会导致整体卡死。
+    napi_status st = napi_call_threadsafe_function(callback, pbuf, napi_tsfn_nonblocking);
     if (st != napi_ok) {
         delete[] pbuf->buf;
         delete pbuf;
@@ -1363,7 +1365,7 @@ static napi_value onData(napi_env env, napi_callback_info info) {
 
     napi_value data_cb_name;
     napi_create_string_utf8(env, "data_callback", NAPI_AUTO_LENGTH, &data_cb_name);
-    napi_create_threadsafe_function(env, args[0], nullptr, data_cb_name, 0, 1, nullptr, nullptr, nullptr,
+    napi_create_threadsafe_function(env, args[0], nullptr, data_cb_name, 4096, 1, nullptr, nullptr, nullptr,
                                     call_on_data_callback, &data_callback);
 
     {

@@ -23,7 +23,8 @@ interface StartResult {
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+    // 跟随系统深浅色主题，不再强制深色（否则设置页等始终为黑色，无法跟随手机）
+    this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
@@ -58,6 +59,22 @@ export default class EntryAbility extends UIAbility {
       mainWindow.setWindowKeepScreenOn(AppStorage.get(appOption.keepScreenOn) as boolean);
 
       AppStorage.setOrCreate('mainWindow', mainWindow)
+
+      // 沉浸式：内容延伸至系统栏下方 + 透明系统栏（鸿蒙 6.1 沉浸光感）
+      mainWindow.setWindowLayoutFullScreen(true);
+      mainWindow.setWindowSystemBarProperties({
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
+        statusBarContentColor: '#FFFFFF',
+        navigationBarContentColor: '#FFFFFF'
+      });
+
+      // 监听软键盘高度变化，存入 AppStorage 供 WebTerminal 调整虚拟键条位置
+      // setWindowLayoutFullScreen(true) 下 KeyboardAvoidMode.OFFSET 可能不生效，
+      // 需组件层根据键盘高度手动上移虚拟键条
+      mainWindow.on('keyboardHeightChange', (height: number) => {
+        AppStorage.setOrCreate('keyboardHeight', height)
+      })
 
       if (canIUse('SystemCapability.Window.SessionManager')
         && deviceInfo.deviceType === '2in1') {
