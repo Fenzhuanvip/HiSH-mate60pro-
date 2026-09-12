@@ -106,7 +106,7 @@ export default struct WebTerminal {
       .width(VKeyWidth)
       .borderRadius(VKeyRadius)
       .fontSize(VKeyFontSize)
-      .fontColor($r('sys.color.white'))
+      .fontColor($r('sys.color.font_primary'))
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
       
@@ -125,7 +125,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor($r('sys.color.font_primary'))
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -144,7 +144,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor($r('sys.color.font_primary'))
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -163,7 +163,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.white'))
+        .fontColor($r('sys.color.font_primary'))
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -227,7 +227,7 @@ export default struct WebTerminal {
       .borderRadius(VKeyRadius)
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
-      .fontColor($r('sys.color.white'))
+      .fontColor($r('sys.color.font_primary'))
       
       .onClick(() => {
         this.showVirtKey = false
@@ -382,7 +382,8 @@ export default struct WebTerminal {
     }
     .width('100%')
     .padding({ top: 4, bottom: 4 })
-    .backgroundColor('#E6000000')
+    .backdropBlur(16)
+    .backgroundColor($r('app.color.setting_block_background'))
   }
 
   async saveShowVirtKey() {
