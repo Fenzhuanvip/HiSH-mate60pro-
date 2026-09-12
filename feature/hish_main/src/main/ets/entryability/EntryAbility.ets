@@ -60,8 +60,10 @@ export default class EntryAbility extends UIAbility {
 
       AppStorage.setOrCreate('mainWindow', mainWindow)
 
-      // 沉浸式：内容延伸至系统栏下方 + 透明系统栏（鸿蒙 6.1 沉浸光感）
-      mainWindow.setWindowLayoutFullScreen(true);
+      // 沉浸式：内容延伸至系统栏 + 透明系统栏（鸿蒙 6.1 沉浸光感）。
+      // 用 expandSafeArea 而非 setWindowLayoutFullScreen：后者会关闭键盘自动避让，
+      // 导致软键盘弹起时底部虚拟键条被遮挡/看不到。
+      mainWindow.expandSafeArea([window.SafeAreaType.SYSTEM, window.SafeAreaType.CUTOUT]);
       mainWindow.setWindowSystemBarProperties({
         statusBarColor: '#00000000',
         navigationBarColor: '#00000000',

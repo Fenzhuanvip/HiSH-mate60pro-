@@ -106,7 +106,7 @@ export default struct WebTerminal {
       .width(VKeyWidth)
       .borderRadius(VKeyRadius)
       .fontSize(VKeyFontSize)
-      .fontColor($r('sys.color.font_primary'))
+      .fontColor(this.vkeyFontColor())
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
       
@@ -125,7 +125,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.font_primary'))
+        .fontColor(this.vkeyFontColor())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -144,7 +144,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.font_primary'))
+        .fontColor(this.vkeyFontColor())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -163,7 +163,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('sys.color.font_primary'))
+        .fontColor(this.vkeyFontColor())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -227,7 +227,7 @@ export default struct WebTerminal {
       .borderRadius(VKeyRadius)
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
-      .fontColor($r('sys.color.font_primary'))
+      .fontColor(this.vkeyFontColor())
       
       .onClick(() => {
         this.showVirtKey = false
@@ -316,6 +316,23 @@ export default struct WebTerminal {
     .hitTestBehavior(HitTestMode.Transparent)
   }
 
+  // 根据终端背景色亮度返回虚拟键字色：深背景白字、浅背景深字，使快捷键颜色跟随终端背景
+  private vkeyFontColor(): string {
+    const bg = this.termBgColor || '#000000'
+    let h = bg.replace('#', '')
+    if (h.length === 8) {
+      h = h.substring(2)
+    }
+    if (h.length !== 6) {
+      return '#FFFFFF'
+    }
+    const r = parseInt(h.substring(0, 2), 16)
+    const g = parseInt(h.substring(2, 4), 16)
+    const b = parseInt(h.substring(4, 6), 16)
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000
+    return brightness > 150 ? '#1A1A1A' : '#FFFFFF'
+  }
+
   @Builder
   buildVirtualKeys() {
     Column() {
@@ -382,8 +399,7 @@ export default struct WebTerminal {
     }
     .width('100%')
     .padding({ top: 4, bottom: 4 })
-    .backdropBlur(16)
-    .backgroundColor($r('app.color.setting_block_background'))
+    .backgroundColor(this.termBgColor)
   }
 
   async saveShowVirtKey() {
@@ -511,6 +527,47 @@ export default struct WebTerminal {
       fs.closeSync(file)
     } catch (e) {
       hilog.warn(DOMAIN, 'WebTerminal', 'write winsize file failed: %{public}s', JSON.stringify(e))
+    }
+  }
+
+  // 判断 hex 背景色是否为亮背景（用于虚拟键字色与 COLORFGBG 推导）
+  private isLightBg(hex: string): boolean {
+    try {
+      let h = (hex || '#000000').replace('#', '')
+      if (h.length === 8) {
+        h = h.substring(2)
+      }
+      if (h.length !== 6) {
+        return false
+      }
+      const r = parseInt(h.substring(0, 2), 16)
+      const g = parseInt(h.substring(2, 4), 16)
+      const b = parseInt(h.substring(4, 6), 16)
+      return (r * 299 + g * 587 + b * 114) / 1000 > 150
+    } catch (e) {
+      return false
+    }
+  }
+
+  // 把终端背景深浅写入共享目录的 .hish-colorfgbg，供 rootfs profile 导出 COLORFGBG，
+  // 让 codearts 等 TUI 应用自适应深/浅背景配色（跟随 HiSH 终端背景色）
+  private writeColorFgBgFile(): void {
+    try {
+      const shared = AppStorage.get(appOption.sharedHost) as string | undefined
+      if (!shared) {
+        return
+      }
+      const path = shared + '/.hish-colorfgbg'
+      const light = this.isLightBg(this.termBgColor)
+      // COLORFGBG 格式 "fg;bg"，xterm 16 色：0=黑，15=亮白
+      const payload = this.utf8Encoder.encodeInto(`${light ? '0' : '15'};${light ? '15' : '0'}\n`)
+      const bytes = new Uint8Array(payload.byteLength)
+      bytes.set(payload)
+      const file = fs.openSync(path, fs.OpenMode.WRITE_ONLY | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      fs.writeSync(file.fd, bytes.buffer)
+      fs.closeSync(file)
+    } catch (e) {
+      hilog.warn(DOMAIN, 'WebTerminal', 'write colorfgbg file failed: %{public}s', JSON.stringify(e))
     }
   }
 
@@ -702,21 +759,9 @@ export default struct WebTerminal {
           await this.writeBytesToTerm(clearBytes);
         }
 
-        let start = 0;
-        while (start < completeEnd) {
-          let end = Math.min(start + this.WRITE_SLICE, completeEnd);
-          if (end < completeEnd) {
-            const hold = this.incompleteStart(merged.subarray(start, end));
-            if (hold > 0) {
-              end = start + hold;
-            } else if (hold === 0 && start + 1 < completeEnd) {
-              const seqEnd = this.escapeEnd(merged, start, completeEnd);
-              end = seqEnd > start ? seqEnd : start + 1;
-            }
-          }
-          await this.writeBytesToTerm(merged.subarray(start, end));
-          start = end;
-        }
+        // completeEnd 已由 incompleteStart 保证为完整序列边界，整块一次写入，
+        // 避免逐片 runJavaScript 的 IPC 往返开销（TUI 大量输出时卡顿主因）。
+        await this.writeBytesToTerm(merged.subarray(0, completeEnd))
       }
     } catch (e) {
       hilog.error(DOMAIN, 'WebTerminal', 'flushData failed: %{public}s', JSON.stringify(e));
@@ -839,6 +884,7 @@ export default struct WebTerminal {
 
   onBgColorChanged() {
     this.webviewController.runJavaScript(`exports.setBackgroundColor(${JSON.stringify(this.termBgColor)})`)
+    this.writeColorFgBgFile()
   }
 
   onBgImageChanged() {
