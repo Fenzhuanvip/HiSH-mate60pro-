@@ -69,6 +69,13 @@ export default class EntryAbility extends UIAbility {
         navigationBarContentColor: '#FFFFFF'
       });
 
+      // 监听软键盘高度变化，存入 AppStorage 供 WebTerminal 调整虚拟键条位置
+      // setWindowLayoutFullScreen(true) 下 KeyboardAvoidMode.OFFSET 可能不生效，
+      // 需组件层根据键盘高度手动上移虚拟键条
+      mainWindow.on('keyboardHeightChange', (height: number) => {
+        AppStorage.setOrCreate('keyboardHeight', height)
+      })
+
       if (canIUse('SystemCapability.Window.SessionManager')
         && deviceInfo.deviceType === '2in1') {
         mainWindow.setWindowDecorVisible(false);
