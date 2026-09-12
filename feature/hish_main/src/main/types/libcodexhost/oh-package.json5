@@ -1,0 +1,6 @@
+{
+  "name": "libcodexhost.so",
+  "types": "./index.d.ts",
+  "version": "1.0.0",
+  "description": "Type definitions for the embedded Codex OHOS host."
+}
