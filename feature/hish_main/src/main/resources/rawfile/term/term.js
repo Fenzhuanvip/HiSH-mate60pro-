@@ -458,16 +458,38 @@ function setupMirroredInputFix(termEl) {
 // --- Implementation of exports matching term.js.bak ---
 
 // exports.write(data) - Write data from VM to terminal
+var writeChain = Promise.resolve();
+
+function enqueueTermWrite(buf, applicationMode) {
+    writeChain = writeChain.catch(function () {}).then(function () {
+        return new Promise(function (resolve) {
+            try {
+                term.write(buf, function () {
+                    try {
+                        if (term.modes.applicationCursorKeysMode !== applicationMode) {
+                            if (native && native.setApplicationMode) {
+                                native.setApplicationMode(term.modes.applicationCursorKeysMode);
+                            }
+                        }
+                    } catch (e2) {}
+                    resolve();
+                });
+            } catch (e) {
+                console.error("term.write failed", e);
+                resolve();
+            }
+        });
+    });
+    return writeChain.then(function () { return 'ok'; });
+}
+
 exports.write = (data, applicationMode) => {
-    // legacy hterm code imply data is Binary String (UTF-8/Latin1 bytes)
     try {
         const uint8 = strToUint8Array(data);
-        term.write(uint8);
-        if (term.modes.applicationCursorKeysMode !== applicationMode) {
-            native.setApplicationMode(term.modes.applicationCursorKeysMode)
-        }
+        return enqueueTermWrite(uint8, applicationMode);
     } catch (e) {
         console.error("exports.write failed", e);
+        return Promise.resolve('err');
     }
 };
 
@@ -479,14 +501,10 @@ exports.writeBase64 = (base64Data, applicationMode) => {
         for (let i = 0; i < len; i++) {
             buf[i] = binaryString.charCodeAt(i);
         }
-        term.write(buf);
-        if (term.modes.applicationCursorKeysMode !== applicationMode) {
-            if (native && native.setApplicationMode) {
-                native.setApplicationMode(term.modes.applicationCursorKeysMode);
-            }
-        }
+        return enqueueTermWrite(buf, applicationMode);
     } catch (e) {
         console.error("exports.writeBase64 failed", e);
+        return Promise.resolve('err');
     }
 };
 

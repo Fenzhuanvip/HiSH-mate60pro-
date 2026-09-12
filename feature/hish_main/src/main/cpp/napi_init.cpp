@@ -967,7 +967,11 @@ void send_data_to_callback(const uint8_t *data, size_t len, napi_threadsafe_func
         return;
     data_buffer *pbuf = new data_buffer{.buf = new char[len], .size = len};
     memcpy(pbuf->buf, data, len);
-    napi_call_threadsafe_function(callback, pbuf, napi_tsfn_nonblocking);
+    napi_status st = napi_call_threadsafe_function(callback, pbuf, napi_tsfn_blocking);
+    if (st != napi_ok) {
+        delete[] pbuf->buf;
+        delete pbuf;
+    }
 }
 
 void on_serial_data_received(const uint8_t *data, size_t len) {

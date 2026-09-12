@@ -490,10 +490,13 @@ export default struct WebTerminal {
   }
 
   private pendingChunks: Uint8Array[] = [];
+  private carryBytes: Uint8Array = new Uint8Array(0);
   private flushTimeoutID: number | undefined = undefined;
   private writeBusy: boolean = false;
-  private readonly FLUSH_INTERVAL = 8;
-  private readonly WRITE_SLICE = 2048;
+  private forceFlushCarry: boolean = false;
+  private readonly FLUSH_INTERVAL = 16;
+  private readonly WRITE_SLICE = 8192;
+  private readonly MAX_CARRY = 4096;
   private base64Helper = new util.Base64Helper();
   private utf8Encoder = util.TextEncoder.create('utf-8');
 
@@ -511,29 +514,162 @@ export default struct WebTerminal {
     }
   }
 
+  private escapeEnd(data: Uint8Array, esc: number, limit: number): number {
+    if (esc + 1 >= limit) {
+      return -1;
+    }
+    const c1 = data[esc + 1];
+    if (c1 === 0x5B) {
+      let k = esc + 2;
+      while (k < limit) {
+        const b = data[k];
+        if (b >= 0x40 && b <= 0x7E) {
+          return k + 1;
+        }
+        if (k - esc > 256) {
+          return k;
+        }
+        k++;
+      }
+      return -1;
+    }
+    if (c1 === 0x5D) {
+      let k = esc + 2;
+      while (k < limit) {
+        if (data[k] === 0x07) {
+          return k + 1;
+        }
+        if (data[k] === 0x1B && k + 1 < limit && data[k + 1] === 0x5C) {
+          return k + 2;
+        }
+        if (k - esc > 1024) {
+          return k;
+        }
+        k++;
+      }
+      return -1;
+    }
+    if (c1 === 0x50 || c1 === 0x58 || c1 === 0x5E || c1 === 0x5F) {
+      let k = esc + 2;
+      while (k < limit) {
+        if (data[k] === 0x1B && k + 1 < limit && data[k + 1] === 0x5C) {
+          return k + 2;
+        }
+        if (k - esc > 1024) {
+          return k;
+        }
+        k++;
+      }
+      return -1;
+    }
+    if (c1 >= 0x20 && c1 <= 0x2F) {
+      let k = esc + 2;
+      while (k < limit) {
+        if (data[k] >= 0x30 && data[k] <= 0x7E) {
+          return k + 1;
+        }
+        k++;
+      }
+      return -1;
+    }
+    return esc + 2 <= limit ? esc + 2 : -1;
+  }
+
+  private incompleteStart(data: Uint8Array): number {
+    let i = 0;
+    const len = data.length;
+    while (i < len) {
+      const b = data[i];
+      if (b === 0x1B) {
+        const end = this.escapeEnd(data, i, len);
+        if (end < 0) {
+          return i;
+        }
+        i = end;
+        continue;
+      }
+      if (b < 0x80) {
+        i++;
+        continue;
+      }
+      let need = 0;
+      if ((b & 0xE0) === 0xC0) {
+        need = 2;
+      } else if ((b & 0xF0) === 0xE0) {
+        need = 3;
+      } else if ((b & 0xF8) === 0xF0) {
+        need = 4;
+      } else {
+        i++;
+        continue;
+      }
+      if (i + need > len) {
+        return i;
+      }
+      i += need;
+    }
+    return -1;
+  }
+
+  private copyRange(src: Uint8Array, start: number, end: number): Uint8Array {
+    const out = new Uint8Array(end - start);
+    out.set(src.subarray(start, end));
+    return out;
+  }
+
   private async flushData(): Promise<void> {
     if (this.writeBusy) {
       return;
     }
-    if (this.pendingChunks.length === 0) {
+    if (this.pendingChunks.length === 0 && this.carryBytes.length === 0) {
       return;
     }
     this.writeBusy = true;
     try {
-      while (this.pendingChunks.length > 0) {
-        let totalLength = 0;
+      while (this.pendingChunks.length > 0 || this.carryBytes.length > 0) {
+        const flushCarry = this.forceFlushCarry;
+        this.forceFlushCarry = false;
+        if (this.pendingChunks.length === 0) {
+          if (flushCarry && this.carryBytes.length > 0) {
+            this.pendingChunks.push(this.carryBytes);
+            this.carryBytes = new Uint8Array(0);
+          } else {
+            break;
+          }
+        }
+        let totalLength = this.carryBytes.length;
         for (const chunk of this.pendingChunks) {
           totalLength += chunk.length;
         }
         const merged = new Uint8Array(totalLength);
         let offset = 0;
+        if (this.carryBytes.length > 0) {
+          merged.set(this.carryBytes, 0);
+          offset = this.carryBytes.length;
+          this.carryBytes = new Uint8Array(0);
+        }
         for (const chunk of this.pendingChunks) {
           merged.set(chunk, offset);
           offset += chunk.length;
         }
         this.pendingChunks = [];
 
-        if (merged.length >= 6 &&
+        let completeEnd = merged.length;
+        const holdAt = this.incompleteStart(merged);
+        if (holdAt >= 0) {
+          if (flushCarry || merged.length - holdAt > this.MAX_CARRY) {
+            completeEnd = merged.length;
+          } else {
+            completeEnd = holdAt;
+            this.carryBytes = this.copyRange(merged, holdAt, merged.length);
+          }
+        }
+
+        if (completeEnd <= 0) {
+          break;
+        }
+
+        if (completeEnd >= 6 &&
           merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
           merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A
         ) {
@@ -542,15 +678,15 @@ export default struct WebTerminal {
         }
 
         let start = 0;
-        while (start < merged.length) {
-          let end = Math.min(start + this.WRITE_SLICE, merged.length);
-          if (end < merged.length) {
-            let i = end - 1;
-            while (i > start && merged[i] !== 0x1B && end - i < 48) {
-              i--;
-            }
-            if (merged[i] === 0x1B && i > start) {
-              end = i;
+        while (start < completeEnd) {
+          let end = Math.min(start + this.WRITE_SLICE, completeEnd);
+          if (end < completeEnd) {
+            const hold = this.incompleteStart(merged.subarray(start, end));
+            if (hold > 0) {
+              end = start + hold;
+            } else if (hold === 0 && start + 1 < completeEnd) {
+              const seqEnd = this.escapeEnd(merged, start, completeEnd);
+              end = seqEnd > start ? seqEnd : start + 1;
             }
           }
           await this.writeBytesToTerm(merged.subarray(start, end));
@@ -560,10 +696,18 @@ export default struct WebTerminal {
     } catch (e) {
       hilog.error(DOMAIN, 'WebTerminal', 'flushData failed: %{public}s', JSON.stringify(e));
       this.pendingChunks = [];
+      this.carryBytes = new Uint8Array(0);
+      this.forceFlushCarry = false;
     } finally {
       this.writeBusy = false;
       if (this.pendingChunks.length > 0) {
         void this.flushData();
+      } else if (this.carryBytes.length > 0 && this.flushTimeoutID === undefined) {
+        this.flushTimeoutID = setTimeout(() => {
+          this.flushTimeoutID = undefined;
+          this.forceFlushCarry = true;
+          void this.flushData();
+        }, 40);
       }
     }
   }
