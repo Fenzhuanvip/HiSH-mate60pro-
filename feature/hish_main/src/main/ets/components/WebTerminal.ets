@@ -36,6 +36,9 @@ export default struct WebTerminal {
   @State ctrlPressed: boolean = false
   @State shiftPressed: boolean = false
   @State fnPressed: boolean = false
+  @State softKeyboardVisible: boolean = false
+  private windowHeight: number = 0
+  private windowHeightListenerRegistered: boolean = false
   @Watch('onFontSizeChanged') @StorageProp(appOption.terminalFontSize) fontSize: number | null = null
   @Watch('onFontFamilyChanged') @StorageProp(appOption.terminalFontFamily) fontFamily: string = 'Default'
   @Watch('onCursorShapeChanged') @StorageProp(appOption.terminalCursorShape) cursorShape: CursorShape | null = null
@@ -381,8 +384,8 @@ export default struct WebTerminal {
       }
     }
     .width('100%')
-    .padding({ top: 4, bottom: 4 })
-    .backgroundColor('#E6000000')
+    .padding({ top: 4, bottom: this.softKeyboardVisible ? 0 : 4 })
+    .backgroundColor(this.termBgColor ? this.termBgColor + 'E6' : '#E6000000')
   }
 
   async saveShowVirtKey() {
@@ -441,6 +444,7 @@ export default struct WebTerminal {
 
   async load(): Promise<void> {
     this.webviewController.runJavaScript('exports.setFocused(true)')
+    this.registerKeyboardListener()
     napi.onData((d: ArrayBuffer): void => this.onData(d))
     napi.onShutdown((): void => {
       void this.onShutdown()
@@ -518,9 +522,9 @@ export default struct WebTerminal {
   private flushTimeoutID: number | undefined = undefined;
   private writeBusy: boolean = false;
   private forceFlushCarry: boolean = false;
-  private readonly FLUSH_INTERVAL = 16;
-  private readonly WRITE_SLICE = 8192;
-  private readonly MAX_CARRY = 4096;
+  private readonly FLUSH_INTERVAL = 8;
+  private readonly WRITE_SLICE = 16384;
+  private readonly MAX_CARRY = 8192;
   private base64Helper = new util.Base64Helper();
   private utf8Encoder = util.TextEncoder.create('utf-8');
 
@@ -693,15 +697,38 @@ export default struct WebTerminal {
           break;
         }
 
+        // Optimize common clear-screen patterns used by TUI apps (vim, htop, nano, etc.)
+        // Pattern 1: ESC[H ESC[J (cursor home + clear below) -> ESC[H ESC[2J ESC[3J (clear all + scrollback)
+        // Pattern 2: ESC[H ESC[2J (cursor home + clear entire) -> ESC[H ESC[2J ESC[3J (add scrollback clear)
+        // Pattern 3: ESC[2J (clear entire screen) -> ESC[2J ESC[3J
+        let start = 0;
         if (completeEnd >= 6 &&
           merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
           merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A
         ) {
-          const clearBytes = this.utf8Encoder.encodeInto('\x1b[3J');
+          // ESC[H ESC[J -> rewrite as ESC[H ESC[2J ESC[3J for full clear
+          const clearBytes = this.utf8Encoder.encodeInto('\x1b[H\x1b[2J\x1b[3J');
           await this.writeBytesToTerm(clearBytes);
+          start = 6;
+        } else if (completeEnd >= 7 &&
+          merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
+          merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x32 && merged[6] === 0x4A
+        ) {
+          // ESC[H ESC[2J -> append ESC[3J for scrollback clear
+          const origBytes = this.copyRange(merged, 0, 7);
+          await this.writeBytesToTerm(origBytes);
+          const clearScrollback = this.utf8Encoder.encodeInto('\x1b[3J');
+          await this.writeBytesToTerm(clearScrollback);
+          start = 7;
+        } else if (completeEnd >= 4 &&
+          merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x32 && merged[3] === 0x4A
+        ) {
+          // ESC[2J -> rewrite as ESC[2J ESC[3J
+          const clearBytes = this.utf8Encoder.encodeInto('\x1b[2J\x1b[3J');
+          await this.writeBytesToTerm(clearBytes);
+          start = 4;
         }
 
-        let start = 0;
         while (start < completeEnd) {
           let end = Math.min(start + this.WRITE_SLICE, completeEnd);
           if (end < completeEnd) {
@@ -864,6 +891,44 @@ export default struct WebTerminal {
   setApplicationMode(mode: boolean) {
     this.applicationMode = mode
     hilog.info(DOMAIN, 'WebTerminal', 'set applicationMode to %{public}s', this.applicationMode);
+  }
+
+  private registerKeyboardListener(): void {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+      if (!context) return
+      const windowStage = context.windowStage
+      if (!windowStage) return
+      const win = windowStage.getMainWindow()
+      win.then((mainWindow) => {
+        if (this.windowHeightListenerRegistered) return
+        this.windowHeightListenerRegistered = true
+        // 获取初始窗口高度
+        mainWindow.getLastBounds().then((bounds) => {
+          this.windowHeight = bounds.height
+        })
+        // 监听窗口高度变化（软键盘弹出/收起时窗口高度会变）
+        mainWindow.on('windowSizeChange', (windowSize) => {
+          const newHeight = windowSize.height
+          if (this.windowHeight > 0) {
+            const heightDiff = this.windowHeight - newHeight
+            // 软键盘弹出时，窗口高度通常会缩小200px以上
+            const wasKeyboardVisible = this.softKeyboardVisible
+            this.softKeyboardVisible = heightDiff > 150
+            if (wasKeyboardVisible !== this.softKeyboardVisible) {
+              hilog.info(DOMAIN, 'WebTerminal', 'Soft keyboard: %{public}s', this.softKeyboardVisible ? 'visible' : 'hidden')
+              // 键盘状态变化后，延迟重新fit终端
+              setTimeout(() => {
+                this.webviewController.runJavaScript('exports.fit()')
+              }, 100)
+            }
+          }
+          this.windowHeight = newHeight
+        })
+      })
+    } catch (e) {
+      hilog.warn(DOMAIN, 'WebTerminal', 'Failed to register keyboard listener: %{public}s', JSON.stringify(e))
+    }
   }
 
   // Called from WebView when monospace font detection completes.
