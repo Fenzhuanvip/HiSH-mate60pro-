@@ -235,6 +235,7 @@ jobs:
             'export HOME=/root' \
             'export PATH=/usr/sbin:/usr/bin:/sbin:/bin' \
             'export TERM=xterm-256color' \
+            'export COLORTERM=truecolor' \
             'if [ -f /mnt/share/.hish-winsize ]; then' \
             '  read rows cols < /mnt/share/.hish-winsize' \
             '  stty rows "$rows" cols "$cols" 2>/dev/null || true' \
@@ -256,7 +257,7 @@ jobs:
             grep -q '^ttyAMA0$' alpine/etc/securetty || echo ttyAMA0 >> alpine/etc/securetty
           fi
           mkdir -p alpine/root alpine/etc/profile.d
-          printf '%s\n' 'export TERM=xterm-256color' 'unset COLORTERM' \
+          printf '%s\n' 'export TERM=xterm-256color' 'export COLORTERM=truecolor' \
             'if [ -f /mnt/share/.hish-winsize ]; then read rows cols < /mnt/share/.hish-winsize; stty rows "$rows" cols "$cols" 2>/dev/null; fi' \
             'if [ -f /mnt/share/.hish-colorfgbg ]; then export COLORFGBG=$(cat /mnt/share/.hish-colorfgbg); fi' \
             > alpine/etc/profile.d/hish-term.sh

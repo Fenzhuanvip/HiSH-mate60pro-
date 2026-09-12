@@ -47,6 +47,7 @@ export default struct WebTerminal {
   @Watch('onBgImageChanged') @StorageProp(appOption.terminalBackgroundImage) termBgImage: string = ''
   @Watch('onBgBlurChanged') @StorageProp(appOption.terminalBackgroundBlur) termBgBlur: number = 0
   @Watch('onUserFontsChanged') @StorageProp(appOption.terminalUserFonts) termUserFonts: UserFont[] = []
+  @Watch('onKeyboardHeightChanged') @StorageProp('keyboardHeight') keyboardHeight: number = 0
   webviewController: WebviewController = new webview.WebviewController()
   utf8Decoder = util.TextDecoder.create('utf-8', { ignoreBOM: true })
   areaChangeFitTimer?: number = undefined
@@ -313,6 +314,7 @@ export default struct WebTerminal {
     .width('100%')
     .height(22)
     .justifyContent(FlexAlign.Center)
+    .margin({ bottom: this.keyboardHeight > 0 ? `${this.keyboardHeight}px` : 0 })
     .hitTestBehavior(HitTestMode.Transparent)
   }
 
@@ -399,6 +401,7 @@ export default struct WebTerminal {
     }
     .width('100%')
     .padding({ top: 4, bottom: 4 })
+    .margin({ bottom: this.keyboardHeight > 0 ? `${this.keyboardHeight}px` : 0 })
     .backgroundColor(this.termBgColor)
   }
 
@@ -906,6 +909,13 @@ export default struct WebTerminal {
 
   onItalicChanged() {
     this.webviewController.runJavaScript(`exports.setItalic(${this.termItalic})`)
+  }
+
+  onKeyboardHeightChanged() {
+    // 键盘弹起/收起后 WebView 尺寸变化，需重新 fit 终端
+    const fit = () => this.webviewController.runJavaScript('exports.fit()')
+    setTimeout(fit, 60)
+    setTimeout(fit, 200)
   }
 
   setApplicationMode(mode: boolean) {
