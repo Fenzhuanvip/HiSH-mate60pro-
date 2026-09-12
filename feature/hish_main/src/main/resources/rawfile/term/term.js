@@ -145,6 +145,7 @@ function createTerminal() {
         allowTransparency: true,
         fontFamily: 'monospace, "Droid Sans Mono", "Courier New", "Courier", monospace',
         fontSize: 14,
+        minimumContrastRatio: 7,
         theme: {
             background: '#000000',
             foreground: '#ffffff',
