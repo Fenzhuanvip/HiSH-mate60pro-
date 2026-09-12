@@ -54,7 +54,7 @@ export default class EntryAbility extends UIAbility {
 
       const mainWindow = windowStage.getMainWindowSync();
       const uiContext = mainWindow.getUIContext();
-      uiContext.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+      uiContext.setKeyboardAvoidMode(KeyboardAvoidMode.OFFSET);
       mainWindow.setWindowKeepScreenOn(AppStorage.get(appOption.keepScreenOn) as boolean);
 
       AppStorage.setOrCreate('mainWindow', mainWindow)

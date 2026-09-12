@@ -10,6 +10,7 @@ import { SymbolGlyphModifier } from '@kit.ArkUI';
 import stringToArrayBuffer from '../lib/stringToArrayBuffer';
 import fileToDataUrl from '../lib/fileToDataUrl';
 import { QemuAgentManager, AgentPriority } from '../lib/QemuAgentManager';
+import fs from '@ohos.file.fs';
 
 import {
   applyVirtualKeyModifiers,
@@ -469,15 +470,20 @@ export default struct WebTerminal {
 
   async resize(width: number, height: number): Promise<void> {
     hilog.info(DOMAIN, "WebTerminal", 'on resize: %{public}d, %{public}d', width, height)
+    if (width < 2 || height < 2) {
+      return
+    }
 
     if (this.resizeTimeout !== undefined) {
       clearTimeout(this.resizeTimeout!!)
     }
     this.resizeTimeout = setTimeout(async () => {
+      this.writeWinsizeFile(width, height)
       try {
         const agent = await QemuAgentManager.acquire('WebTerminal-resize', AgentPriority.LOW, 3000)
         if (agent) {
-          await agent.execAndGetOutput('/bin/stty', [`rows ${height}`, `cols ${width}`], 3000)
+          const cmd = `stty -F /dev/ttyAMA0 rows ${height} cols ${width} 2>/dev/null || stty rows ${height} cols ${width} < /dev/ttyAMA0`
+          await agent.execAndGetOutput('/bin/sh', ['-c', cmd], 3000)
           await QemuAgentManager.release('WebTerminal-resize')
           hilog.debug(DOMAIN, 'WebTerminal', 'resize via QGA stty succeeded: %{public}dx%{public}d', width, height)
         } else {
@@ -486,7 +492,25 @@ export default struct WebTerminal {
       } catch (e) {
         hilog.error(DOMAIN, 'WebTerminal', 'resize via QGA failed: %{public}s', JSON.stringify(e))
       }
-    }, 50)
+    }, 200)
+  }
+
+  private writeWinsizeFile(width: number, height: number): void {
+    try {
+      const shared = AppStorage.get(appOption.sharedHost) as string | undefined
+      if (!shared) {
+        return
+      }
+      const path = shared + '/.hish-winsize'
+      const payload = this.utf8Encoder.encodeInto(`${height} ${width}\n`)
+      const bytes = new Uint8Array(payload.byteLength)
+      bytes.set(payload)
+      const file = fs.openSync(path, fs.OpenMode.WRITE_ONLY | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      fs.writeSync(file.fd, bytes.buffer)
+      fs.closeSync(file)
+    } catch (e) {
+      hilog.warn(DOMAIN, 'WebTerminal', 'write winsize file failed: %{public}s', JSON.stringify(e))
+    }
   }
 
   private pendingChunks: Uint8Array[] = [];
