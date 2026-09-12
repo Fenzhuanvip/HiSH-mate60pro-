@@ -12,8 +12,16 @@ import { defaultEmulator, defaultRootfs, Emulator, RootFilesystem } from '../mod
 import { util } from '@kit.ArkTS';
 import { fileUri, picker } from '@kit.CoreFileKit';
 import { backgroundRunningManager } from '../lib/backgroundRunningManager';
+import { CodexHostStatus, startEmbeddedCodexHostAsync } from '../backend/CodexNative';
+import { PromptsBackendService } from '../prompts/PromptsBackendService';
+import { installBundledSkills } from '../skills/BundledSkills';
+import { SkillsBackendService } from '../skills/SkillsBackendService';
+import { ReconcileResult } from '../skills/SkillTypes';
+import { huaweiAccountService } from '../account/HuaweiAccountService';
 
 const DOMAIN = 0x0000;
+const CODEX_TAG = 'CodexHost';
+const DEFAULT_CODEX_SERVER_URL = 'ws://127.0.0.1:7456';
 
 interface StartResult {
   portsSkipped: number[]
@@ -26,6 +34,54 @@ export default class EntryAbility extends UIAbility {
     // 跟随系统深浅色主题，不再强制深色（否则设置页等始终为黑色，无法跟随手机）
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+
+    // ===== ArkPilot codex host 启动 =====
+    try {
+      const codexHome: string = `${this.context.filesDir}/codex-home`;
+      AppStorage.setOrCreate<string>('codexHome', codexHome);
+      void startEmbeddedCodexHostAsync(codexHome, DEFAULT_CODEX_SERVER_URL).then((status: CodexHostStatus) => {
+        hilog.info(DOMAIN, CODEX_TAG,
+          'Embedded host start: code=%{public}d running=%{public}s url=%{public}s msg=%{public}s',
+          status.code, status.running ? 'true' : 'false', status.serverUrl, status.message);
+      }).catch((err: Error) => {
+        hilog.error(DOMAIN, CODEX_TAG, 'Failed to start embedded codex host: %{public}s', JSON.stringify(err));
+      });
+
+      const promptsService = new PromptsBackendService(codexHome);
+      promptsService.autoImportOnFirstLaunch().catch((err: Error) => {
+        hilog.warn(DOMAIN, CODEX_TAG, 'Prompt auto import failed: %{public}s', JSON.stringify(err));
+      });
+      promptsService.ensureReplyRules().catch((err: Error) => {
+        hilog.warn(DOMAIN, CODEX_TAG, 'ensureReplyRules failed: %{public}s', JSON.stringify(err));
+      });
+
+      setTimeout(() => {
+        try {
+          installBundledSkills(codexHome);
+        } catch (err) {
+          hilog.error(DOMAIN, CODEX_TAG, 'Failed to install bundled skills: %{public}s', JSON.stringify(err));
+        }
+      }, 0);
+
+      const skillsService = new SkillsBackendService(codexHome);
+      skillsService.reconcileSkills().then((result: ReconcileResult) => {
+        if (result.removed.length > 0 || result.registered.length > 0) {
+          hilog.info(DOMAIN, CODEX_TAG, 'Skills reconciled: removed=%{public}d registered=%{public}d',
+            result.removed.length, result.registered.length);
+        }
+      }).catch((err: Error) => {
+        hilog.warn(DOMAIN, CODEX_TAG, 'Skills reconcile failed: %{public}s', JSON.stringify(err));
+      });
+    } catch (err) {
+      hilog.error(DOMAIN, CODEX_TAG, 'Codex host init failed: %{public}s', JSON.stringify(err));
+    }
+
+    try {
+      huaweiAccountService.init(this.context);
+      void huaweiAccountService.verifySystemAccountState();
+    } catch (err) {
+      hilog.error(DOMAIN, CODEX_TAG, 'Huawei account init failed: %{public}s', JSON.stringify(err));
+    }
   }
 
   onDestroy(): void {

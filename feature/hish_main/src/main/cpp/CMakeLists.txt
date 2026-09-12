@@ -31,7 +31,19 @@ add_library(hish_main SHARED
 target_link_libraries(hish_main PUBLIC
     libace_napi.z.so
     libhilog_ndk.z.so
+    libdl.so
 )
+
+# ArkPilot codex host bridge (Rust). Conditional: if the .so was built and
+# placed under libs/<arch>/, link it; otherwise the NAPI layer gracefully
+# reports a load error at runtime via dlopen.
+set(RUST_BRIDGE_LIB_NAME libcodex_ohos_host.so)
+set(RUST_BRIDGE_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/${OHOS_ARCH})
+set(RUST_BRIDGE_LIB_PATH ${RUST_BRIDGE_LIB_DIR}/${RUST_BRIDGE_LIB_NAME})
+if(EXISTS ${RUST_BRIDGE_LIB_PATH})
+    target_link_directories(hish_main PUBLIC ${RUST_BRIDGE_LIB_DIR})
+    target_link_libraries(hish_main PUBLIC ${RUST_BRIDGE_LIB_NAME})
+endif()
 
 target_compile_options(hish_main PRIVATE -O2 -flto)
 target_link_options(hish_main PRIVATE -flto)

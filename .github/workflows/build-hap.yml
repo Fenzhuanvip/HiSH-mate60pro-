@@ -278,8 +278,109 @@ jobs:
           path: rootfs_aarch64.qcow2
           retention-days: 30
 
+  build-codex-host:
+    runs-on: ubuntu-latest
+    container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Discover OHOS Native SDK
+        id: sdk
+        run: |
+          set -eux
+          for d in \
+            "/opt/harmonyos-tools/command-line-tools/sdk/default/openharmony/native" \
+            "/opt/harmonyos/sdk/default/openharmony/native" \
+            "${TOOL_HOME:-}/sdk/default/openharmony/native"; do
+            if [ -n "$d" ] && [ -f "$d/llvm/bin/clang" ]; then
+              echo "native=$d" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          done
+          echo "OHOS Native SDK not found" >&2
+          find /opt -name 'clang' -path '*/llvm/bin/*' 2>/dev/null | head -5
+          exit 1
+
+      - name: Clone ArkPilot for Rust source
+        run: |
+          git clone --depth=1 https://github.com/midori52000/ArkPilot.git /tmp/arkpilot
+          test -f /tmp/arkpilot/codex-main/codex-rs/Cargo.toml
+
+      - name: Install Rust toolchain
+        run: |
+          set -eux
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.93.0 -y
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-unknown-linux-ohos
+          cargo --version
+          rustc --version
+
+      - name: Create Linux toolchain wrappers
+        run: |
+          set -eux
+          OHOS_NATIVE="${{ steps.sdk.outputs.native }}"
+          RUST_WS="/tmp/arkpilot/codex-main/codex-rs"
+          cat > "$RUST_WS/toolchains/ohos-aarch64-clang.sh" << CLANG_EOF
+          #!/bin/sh
+          exec "$OHOS_NATIVE/llvm/bin/clang" -target aarch64-linux-ohos --sysroot="$OHOS_NATIVE/sysroot" -D__MUSL__ "\$@"
+          CLANG_EOF
+          cat > "$RUST_WS/toolchains/ohos-aarch64-clangxx.sh" << CLANGXX_EOF
+          #!/bin/sh
+          exec "$OHOS_NATIVE/llvm/bin/clang++" -target aarch64-linux-ohos --sysroot="$OHOS_NATIVE/sysroot" -D__MUSL__ "\$@"
+          CLANGXX_EOF
+          chmod +x "$RUST_WS/toolchains/ohos-aarch64-clang.sh" "$RUST_WS/toolchains/ohos-aarch64-clangxx.sh"
+
+      - name: Build codex-ohos-host (aarch64)
+        run: |
+          set -eux
+          source "$HOME/.cargo/env"
+          OHOS_NATIVE="${{ steps.sdk.outputs.native }}"
+          RUST_WS="/tmp/arkpilot/codex-main/codex-rs"
+
+          export OHOS_NATIVE_ROOT="$OHOS_NATIVE"
+          export OHOS_NATIVE="$OHOS_NATIVE"
+          export OHOS_SDK_NATIVE="$OHOS_NATIVE"
+          export OHOS_NDK_HOME="$OHOS_NATIVE"
+          export DEVECO_SDK_HOME="$(dirname $(dirname $(dirname "$OHOS_NATIVE")))"
+
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$RUST_WS/toolchains/ohos-aarch64-clang.sh"
+          export CC_aarch64_unknown_linux_ohos="$RUST_WS/toolchains/ohos-aarch64-clang.sh"
+          export CXX_aarch64_unknown_linux_ohos="$RUST_WS/toolchains/ohos-aarch64-clangxx.sh"
+          export AR_aarch64_unknown_linux_ohos="$OHOS_NATIVE/llvm/bin/llvm-ar"
+          export RANLIB_aarch64_unknown_linux_ohos="$OHOS_NATIVE/llvm/bin/llvm-ranlib"
+          export CMAKE="$OHOS_NATIVE/build-tools/cmake/bin/cmake"
+          export CMAKE_GENERATOR=Ninja
+          export CMAKE_MAKE_PROGRAM="$OHOS_NATIVE/build-tools/cmake/bin/ninja"
+          export CMAKE_TOOLCHAIN_FILE_aarch64_unknown_linux_ohos="$OHOS_NATIVE/build/cmake/ohos.toolchain.cmake"
+          export PATH="$OHOS_NATIVE/build-tools/cmake/bin:$OHOS_NATIVE/llvm/bin:$PATH"
+
+          cd "$RUST_WS"
+          cargo build --package codex-ohos-host --target aarch64-unknown-linux-ohos 2>&1 | tee /tmp/codex-build.log
+
+          SO_FILE="target/aarch64-unknown-linux-ohos/debug/libcodex_ohos_host.so"
+          test -f "$SO_FILE"
+          ls -lh "$SO_FILE"
+          cp "$SO_FILE" /tmp/libcodex_ohos_host.so
+
+      - name: Upload codex-host artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-host-aarch64
+          path: /tmp/libcodex_ohos_host.so
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-host-build-log
+          path: /tmp/codex-build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-hap:
-    needs: [build-kernel, build-qemu, build-rootfs]
+    needs: [build-kernel, build-qemu, build-rootfs, build-codex-host]
     runs-on: ubuntu-latest
     container: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:latest
     defaults:
@@ -412,6 +513,23 @@ jobs:
           name: rootfs-aarch64
           path: feature/hish_main/src/main/resources/rawfile/vm/
 
+      - name: Download codex-host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-host-aarch64
+          path: codex-host-tmp/
+
+      - name: Place codex-host .so to lib dirs
+        run: |
+          set -eux
+          test -f codex-host-tmp/libcodex_ohos_host.so
+          mkdir -p feature/hish_main/libs/arm64-v8a
+          mkdir -p feature/hish_main/src/main/libs/arm64-v8a
+          cp -v codex-host-tmp/libcodex_ohos_host.so feature/hish_main/libs/arm64-v8a/
+          cp -v codex-host-tmp/libcodex_ohos_host.so feature/hish_main/src/main/libs/arm64-v8a/
+          ls -lh feature/hish_main/libs/arm64-v8a/libcodex_ohos_host.so
+          ls -lh feature/hish_main/src/main/libs/arm64-v8a/libcodex_ohos_host.so
+
       - name: Rename kernel file
         run: mv feature/hish_main/src/main/resources/rawfile/vm/kernel_image feature/hish_main/src/main/resources/rawfile/vm/kernel_aarch64
 
@@ -462,7 +580,7 @@ jobs:
           # 捕获 unzip 列表一次并忽略 unzip 的非零退出码（如 "extra bytes" 警告）。
           # 否则在 `set -o pipefail` 下 `unzip -l | grep -q` 会因 unzip 非零而误判 missing。
           LISTING="$(unzip -l "$HAP_FILE" 2>/dev/null || true)"
-          printf '%s\n' "$LISTING" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libpcre2-8\.so|libz\.so|libhish_main\.so' || true
+          printf '%s\n' "$LISTING" | grep -E 'libqemu-system-aarch64\.so|libqemu-img\.so|libslirp\.so|libpcre2-8\.so|libz\.so|libhish_main\.so|libcodex_ohos_host\.so' || true
           for so in libqemu-system-aarch64.so libqemu-img.so libslirp.so libpcre2-8.so libz.so libhish_main.so; do
             if ! grep -q -- "$so" <<<"$LISTING"; then
               echo "$so missing from HAP" >&2
@@ -470,6 +588,12 @@ jobs:
               exit 1
             fi
           done
+          # codex host .so: 软检查（缺失不阻断 CI，仅警告）
+          if grep -q -- 'libcodex_ohos_host.so' <<<"$LISTING"; then
+            echo "libcodex_ohos_host.so packed in HAP"
+          else
+            echo "WARNING: libcodex_ohos_host.so not in HAP (AI features disabled)"
+          fi
           QEMU_TMP=$(mktemp)
           unzip -p "$HAP_FILE" 'libs/arm64-v8a/libqemu-system-aarch64.so' > "$QEMU_TMP"
           NEEDED="$(patchelf --print-needed "$QEMU_TMP")"
