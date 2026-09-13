@@ -3,6 +3,7 @@ import napi from 'libhish_main.so'
 import { defaultEmulator, PortMapping } from '../model/Emulator'
 import deviceInfo from '@ohos.deviceInfo'
 import { hilog } from '@kit.PerformanceAnalysisKit'
+import { getMemSize } from './systemProfile'
 
 const DOMAIN = 0x0000
 
@@ -62,6 +63,16 @@ export interface VmStartResult {
   nativeLibDir?: string
   missingLibs?: string[]
   dlopenError?: string
+}
+
+// 根据设备内存自动计算 QEMU TCG Translation Buffer 大小 (KB)
+// 规则：取物理内存的 ~0.1%，下限 2MB，上限 16MB
+function getDynamicTbSize(): number {
+  const memMB = getMemSize()
+  const tbKB = Math.round(memMB * 1024 * 0.001)
+  const clamped = Math.max(2048, Math.min(tbKB, 16384))
+  hilog.info(DOMAIN, 'startVm', 'Dynamic tb-size: memMB=%{public}d, tbKB=%{public}d', memMB, clamped)
+  return clamped
 }
 
 function startVm(options: VmOptions): VmStartResult {
@@ -135,7 +146,7 @@ function startVm(options: VmOptions): VmStartResult {
     'iommu=none,its=off,usb=off,virtualization=off,memory-backend=mem0,compact-highmem=on,' +
     'dump-guest-core=off,mem-merge=off,hmat=off',
     '-overcommit', 'cpu-pm=off',
-    '-cpu', 'max,pauth-impdef=on,sve=off,pmu=off', '-accel', 'tcg,thread=multi,tb-size=4096',
+    '-cpu', 'max,pauth-impdef=on,sve=off,pmu=off', '-accel', `tcg,thread=multi,tb-size=${getDynamicTbSize()}`,
     "-object", "rng-random,filename=/dev/urandom,id=rng0",
     "-device", "virtio-rng-pci-non-transitional,rng=rng0",
     '-rtc', 'base=utc,clock=host', '-L', options.baseDir]

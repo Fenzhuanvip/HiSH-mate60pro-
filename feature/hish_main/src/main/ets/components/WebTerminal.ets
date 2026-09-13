@@ -36,6 +36,9 @@ export default struct WebTerminal {
   @State ctrlPressed: boolean = false
   @State shiftPressed: boolean = false
   @State fnPressed: boolean = false
+  @State softKeyboardVisible: boolean = false
+  private windowHeight: number = 0
+  private windowHeightListenerRegistered: boolean = false
   @Watch('onFontSizeChanged') @StorageProp(appOption.terminalFontSize) fontSize: number | null = null
   @Watch('onFontFamilyChanged') @StorageProp(appOption.terminalFontFamily) fontFamily: string = 'Default'
   @Watch('onCursorShapeChanged') @StorageProp(appOption.terminalCursorShape) cursorShape: CursorShape | null = null
@@ -107,7 +110,7 @@ export default struct WebTerminal {
       .width(VKeyWidth)
       .borderRadius(VKeyRadius)
       .fontSize(VKeyFontSize)
-      .fontColor(this.vkeyFontColor())
+      .fontColor(this.vKeyFg())
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
       
@@ -126,7 +129,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.vkeyFontColor())
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -145,7 +148,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.vkeyFontColor())
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -164,7 +167,7 @@ export default struct WebTerminal {
       Text(name)
         .fontSize(VKeyFontSize)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.vkeyFontColor())
+        .fontColor(this.vKeyFg())
         .maxLines(1)
         .textAlign(TextAlign.Center)
     }
@@ -180,7 +183,7 @@ export default struct WebTerminal {
   @Builder
   settingsButton() {
     Button({ buttonStyle: ButtonStyleMode.TEXTUAL }) {
-      Image($r('app.media.gearshape')).width(16).height(16).padding(0)
+      Image($r('app.media.gearshape')).width(16).height(16).padding(0).fillColor(this.vKeyFg())
     }
     .height(VKeyHeight)
     .width(VKeyHeight)
@@ -232,15 +235,79 @@ export default struct WebTerminal {
       .borderRadius(VKeyRadius)
       .margin(VKeyMargin)
       .padding({ left: VKeyPadding, right: VKeyPadding })
-      .fontColor(this.vkeyFontColor())
+      .fontColor(this.vKeyFg())
       
       .onClick(() => {
         this.showVirtKey = false
       })
   }
 
+  private hasWallpaper(): boolean {
+    return this.termBgImage.length > 0
+  }
+
+  private colorLuminance(color: string): number {
+    let hex = color.trim()
+    if (hex.startsWith('#')) {
+      hex = hex.substring(1)
+    }
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+    }
+    if (hex.length < 6) {
+      return 0
+    }
+    const r = Number.parseInt(hex.substring(0, 2), 16) / 255
+    const g = Number.parseInt(hex.substring(2, 4), 16) / 255
+    const b = Number.parseInt(hex.substring(4, 6), 16) / 255
+    if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) {
+      return 0
+    }
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+
+  private isLightTheme(): boolean {
+    if (this.hasWallpaper()) {
+      return false
+    }
+    return this.colorLuminance(this.termBgColor) > 0.55
+  }
+
+  private vKeyFg(): string {
+    return this.isLightTheme() ? '#1A1A1A' : '#FFFFFF'
+  }
+
+  private vKeyBarBg(): string {
+    if (this.hasWallpaper()) {
+      return '#66000000'
+    }
+    return this.isLightTheme() ? '#99FFFFFF' : '#66000000'
+  }
+
+  private wallpaperSrc(): string {
+    const filesDir = AppStorage.get<string>(appOption.appFilesDir) ?? ''
+    return 'file://' + filesDir + '/terminal_bg/' + this.termBgImage
+  }
+
+  @Builder
+  buildTerminalBackdrop() {
+    if (this.hasWallpaper()) {
+      Image(this.wallpaperSrc())
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .blur(this.termBgBlur)
+    } else {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.termBgColor)
+    }
+  }
+
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
+      this.buildTerminalBackdrop()
       Column() {
         Web({
           src: $rawfile('term/term.html'),
@@ -272,7 +339,7 @@ export default struct WebTerminal {
           }
         }`
           })
-          .backgroundColor('#000')
+          .backgroundColor(this.hasWallpaper() ? Color.Transparent : this.termBgColor)
           .width('100%')
           .layoutWeight(1)
           .onAreaChange(() => {
@@ -308,7 +375,7 @@ export default struct WebTerminal {
         .height(20)
         .fontSize(12)
         .borderRadius(VKeyRadius)
-        .fontColor('#888')
+        .fontColor(this.vKeyFg())
         .padding({ left: VKeyPadding, right: VKeyPadding })
         
         .onClick(() => {
@@ -323,25 +390,6 @@ export default struct WebTerminal {
   }
 
   // 根据终端背景色亮度返回虚拟键字色：深背景白字、浅背景深字，使快捷键颜色跟随终端背景
-  private vkeyFontColor(): string {
-    const bg = this.termBgColor || '#000000'
-    let h = bg.replace('#', '')
-    if (h.length === 8) {
-      h = h.substring(2)
-    }
-    if (h.length !== 6) {
-      return '#FFFFFF'
-    }
-    const r = parseInt(h.substring(0, 2), 16)
-    const g = parseInt(h.substring(2, 4), 16)
-    const b = parseInt(h.substring(4, 6), 16)
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000
-    return brightness > 150 ? '#1A1A1A' : '#FFFFFF'
-  }
-
-  @Builder
-  buildVirtualKeys() {
-    Column() {
       if (this.fnPressed) {
         Row() {
           this.toggleFnKey('FN', () => this.toggleFn());
@@ -404,9 +452,9 @@ export default struct WebTerminal {
       }
     }
     .width('100%')
-    .padding({ top: 4, bottom: 4 })
+    .padding({ top: 4, bottom: this.softKeyboardVisible ? 0 : 4 })
     .margin({ bottom: this.keyboardHeight > 0 ? `${this.keyboardHeight}px` : 0 })
-    .backgroundColor(this.termBgColor)
+    .backgroundColor(this.vKeyBarBg())
   }
 
   async saveShowVirtKey() {
@@ -465,6 +513,7 @@ export default struct WebTerminal {
 
   async load(): Promise<void> {
     this.webviewController.runJavaScript('exports.setFocused(true)')
+    this.registerKeyboardListener()
     napi.onData((d: ArrayBuffer): void => this.onData(d))
     napi.onShutdown((): void => {
       void this.onShutdown()
@@ -583,9 +632,9 @@ export default struct WebTerminal {
   private flushTimeoutID: number | undefined = undefined;
   private writeBusy: boolean = false;
   private forceFlushCarry: boolean = false;
-  private readonly FLUSH_INTERVAL = 16;
-  private readonly WRITE_SLICE = 8192;
-  private readonly MAX_CARRY = 4096;
+  private readonly FLUSH_INTERVAL = 8;
+  private readonly WRITE_SLICE = 16384;
+  private readonly MAX_CARRY = 8192;
   private base64Helper = new util.Base64Helper();
   private utf8Encoder = util.TextEncoder.create('utf-8');
 
@@ -758,12 +807,36 @@ export default struct WebTerminal {
           break;
         }
 
+        // Optimize common clear-screen patterns used by TUI apps (vim, htop, nano, etc.)
+        // Pattern 1: ESC[H ESC[J (cursor home + clear below) -> ESC[H ESC[2J ESC[3J (clear all + scrollback)
+        // Pattern 2: ESC[H ESC[2J (cursor home + clear entire) -> ESC[H ESC[2J ESC[3J (add scrollback clear)
+        // Pattern 3: ESC[2J (clear entire screen) -> ESC[2J ESC[3J
+        let start = 0;
         if (completeEnd >= 6 &&
           merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
           merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x4A
         ) {
-          const clearBytes = this.utf8Encoder.encodeInto('\x1b[3J');
+          // ESC[H ESC[J -> rewrite as ESC[H ESC[2J ESC[3J for full clear
+          const clearBytes = this.utf8Encoder.encodeInto('\x1b[H\x1b[2J\x1b[3J');
           await this.writeBytesToTerm(clearBytes);
+          start = 6;
+        } else if (completeEnd >= 7 &&
+          merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x48 &&
+          merged[3] === 0x1B && merged[4] === 0x5B && merged[5] === 0x32 && merged[6] === 0x4A
+        ) {
+          // ESC[H ESC[2J -> append ESC[3J for scrollback clear
+          const origBytes = this.copyRange(merged, 0, 7);
+          await this.writeBytesToTerm(origBytes);
+          const clearScrollback = this.utf8Encoder.encodeInto('\x1b[3J');
+          await this.writeBytesToTerm(clearScrollback);
+          start = 7;
+        } else if (completeEnd >= 4 &&
+          merged[0] === 0x1B && merged[1] === 0x5B && merged[2] === 0x32 && merged[3] === 0x4A
+        ) {
+          // ESC[2J -> rewrite as ESC[2J ESC[3J
+          const clearBytes = this.utf8Encoder.encodeInto('\x1b[2J\x1b[3J');
+          await this.writeBytesToTerm(clearBytes);
+          start = 4;
         }
 
         // completeEnd 已由 incompleteStart 保证为完整序列边界，整块一次写入，
@@ -925,6 +998,44 @@ export default struct WebTerminal {
   setApplicationMode(mode: boolean) {
     this.applicationMode = mode
     hilog.info(DOMAIN, 'WebTerminal', 'set applicationMode to %{public}s', this.applicationMode);
+  }
+
+  private registerKeyboardListener(): void {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+      if (!context) return
+      const windowStage = context.windowStage
+      if (!windowStage) return
+      const win = windowStage.getMainWindow()
+      win.then((mainWindow) => {
+        if (this.windowHeightListenerRegistered) return
+        this.windowHeightListenerRegistered = true
+        // 获取初始窗口高度
+        mainWindow.getLastBounds().then((bounds) => {
+          this.windowHeight = bounds.height
+        })
+        // 监听窗口高度变化（软键盘弹出/收起时窗口高度会变）
+        mainWindow.on('windowSizeChange', (windowSize) => {
+          const newHeight = windowSize.height
+          if (this.windowHeight > 0) {
+            const heightDiff = this.windowHeight - newHeight
+            // 软键盘弹出时，窗口高度通常会缩小200px以上
+            const wasKeyboardVisible = this.softKeyboardVisible
+            this.softKeyboardVisible = heightDiff > 150
+            if (wasKeyboardVisible !== this.softKeyboardVisible) {
+              hilog.info(DOMAIN, 'WebTerminal', 'Soft keyboard: %{public}s', this.softKeyboardVisible ? 'visible' : 'hidden')
+              // 键盘状态变化后，延迟重新fit终端
+              setTimeout(() => {
+                this.webviewController.runJavaScript('exports.fit()')
+              }, 100)
+            }
+          }
+          this.windowHeight = newHeight
+        })
+      })
+    } catch (e) {
+      hilog.warn(DOMAIN, 'WebTerminal', 'Failed to register keyboard listener: %{public}s', JSON.stringify(e))
+    }
   }
 
   // Called from WebView when monospace font detection completes.
