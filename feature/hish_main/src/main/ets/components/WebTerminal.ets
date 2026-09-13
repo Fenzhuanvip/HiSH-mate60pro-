@@ -1013,9 +1013,8 @@ export default struct WebTerminal {
         if (this.windowHeightListenerRegistered) return
         this.windowHeightListenerRegistered = true
         // 获取初始窗口高度
-        mainWindow.getLastBounds().then((bounds) => {
-          this.windowHeight = bounds.height
-        })
+        const props = mainWindow.getWindowProperties()
+        this.windowHeight = props.windowRect.height
         // 监听窗口高度变化（软键盘弹出/收起时窗口高度会变）
         mainWindow.on('windowSizeChange', (windowSize) => {
           const newHeight = windowSize.height
