@@ -9,7 +9,12 @@ var currentFontFamily = 'Default';
 
 // Initialize Addons (constructed upfront; attached to term in createTerminal)
 const fitAddon = new FitAddon.FitAddon();
-const webglAddon = new WebglAddon.WebglAddon();
+let webglAddon = null;
+try {
+    webglAddon = new WebglAddon.WebglAddon();
+} catch (e) {
+    console.warn('WebglAddon not available, using DOM renderer', e);
+}
 
 // Initialize exports for ArkTS to call
 window.exports = {};
@@ -145,16 +150,18 @@ function createTerminal() {
         allowTransparency: true,
         fontFamily: 'monospace, "Droid Sans Mono", "Courier New", "Courier", monospace',
         fontSize: 14,
-        minimumContrastRatio: 7,
+        minimumContrastRatio: 1,
         theme: {
             background: '#000000',
             foreground: '#ffffff',
             cursor: '#ffffff'
         },
         screenReaderMode: false,
-        scrollback: 1500,
+        scrollback: 10000,
         drawBoldText: true,
         disableStdin: false,
+        windowsMode: false,
+        fastScrollModifier: 'alt',
         windowOptions: {
             getWinSizeChars: true,
             getWinSizePixels: true,
@@ -274,7 +281,7 @@ window.onload = function () {
             }
 
             // 4. Load WebGL (unavailable in this DOM-renderer-only build)
-            if (shouldEnableWebGL) {
+            if (shouldEnableWebGL && webglAddon) {
                 try {
                     webglAddon.onContextLoss(e => {
                         webglAddon.dispose();
@@ -282,7 +289,7 @@ window.onload = function () {
                     term.loadAddon(webglAddon);
                     console.log("WebGL renderer loaded");
                 } catch (e) {
-                    console.warn("WebGL renderer failed to load, falling back to canvas", e);
+                    console.warn("WebGL renderer failed to load, falling back to DOM", e);
                 }
             }
 

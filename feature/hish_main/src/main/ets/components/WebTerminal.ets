@@ -50,6 +50,8 @@ export default struct WebTerminal {
   @Watch('onBgImageChanged') @StorageProp(appOption.terminalBackgroundImage) termBgImage: string = ''
   @Watch('onBgBlurChanged') @StorageProp(appOption.terminalBackgroundBlur) termBgBlur: number = 0
   @Watch('onUserFontsChanged') @StorageProp(appOption.terminalUserFonts) termUserFonts: UserFont[] = []
+  @Watch('onKeyboardHeightChanged') @StorageProp('keyboardHeight') keyboardHeight: number = 0
+  @StorageProp('statusBarHeight') statusBarHeight: number = 0
   webviewController: WebviewController = new webview.WebviewController()
   utf8Decoder = util.TextDecoder.create('utf-8', { ignoreBOM: true })
   areaChangeFitTimer?: number = undefined
@@ -203,6 +205,10 @@ export default struct WebTerminal {
 
   private settingsButtonOptions(): MenuElement[] {
     const regularOptions: MenuElement[] = [{
+      value: 'AI 工作台',
+      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.list_bullet')).fontSize($r('sys.float.Title_S')),
+      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/AiWorkbench' })
+    }, {
       value: $r('app.string.menu_emulator_management'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.more')).fontSize($r('sys.float.Title_S')),
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/EmulatorManagementPage' })
@@ -357,6 +363,7 @@ export default struct WebTerminal {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.statusBarHeight > 0 ? `${this.statusBarHeight}px` : 0 })
     }
     .width('100%')
     .height('100%')
@@ -380,6 +387,7 @@ export default struct WebTerminal {
     .width('100%')
     .height(22)
     .justifyContent(FlexAlign.Center)
+    .margin({ bottom: this.keyboardHeight > 0 ? `${this.keyboardHeight}px` : 0 })
     .hitTestBehavior(HitTestMode.Transparent)
   }
 
@@ -449,6 +457,7 @@ export default struct WebTerminal {
     }
     .width('100%')
     .padding({ top: 4, bottom: this.softKeyboardVisible ? 0 : 4 })
+    .margin({ bottom: this.keyboardHeight > 0 ? `${this.keyboardHeight}px` : 0 })
     .backgroundColor(this.vKeyBarBg())
   }
 
@@ -578,6 +587,47 @@ export default struct WebTerminal {
       fs.closeSync(file)
     } catch (e) {
       hilog.warn(DOMAIN, 'WebTerminal', 'write winsize file failed: %{public}s', JSON.stringify(e))
+    }
+  }
+
+  // 判断 hex 背景色是否为亮背景（用于虚拟键字色与 COLORFGBG 推导）
+  private isLightBg(hex: string): boolean {
+    try {
+      let h = (hex || '#000000').replace('#', '')
+      if (h.length === 8) {
+        h = h.substring(2)
+      }
+      if (h.length !== 6) {
+        return false
+      }
+      const r = parseInt(h.substring(0, 2), 16)
+      const g = parseInt(h.substring(2, 4), 16)
+      const b = parseInt(h.substring(4, 6), 16)
+      return (r * 299 + g * 587 + b * 114) / 1000 > 150
+    } catch (e) {
+      return false
+    }
+  }
+
+  // 把终端背景深浅写入共享目录的 .hish-colorfgbg，供 rootfs profile 导出 COLORFGBG，
+  // 让 codearts 等 TUI 应用自适应深/浅背景配色（跟随 HiSH 终端背景色）
+  private writeColorFgBgFile(): void {
+    try {
+      const shared = AppStorage.get(appOption.sharedHost) as string | undefined
+      if (!shared) {
+        return
+      }
+      const path = shared + '/.hish-colorfgbg'
+      const light = this.isLightBg(this.termBgColor)
+      // COLORFGBG 格式 "fg;bg"，xterm 16 色：0=黑，15=亮白
+      const payload = this.utf8Encoder.encodeInto(`${light ? '0' : '15'};${light ? '15' : '0'}\n`)
+      const bytes = new Uint8Array(payload.byteLength)
+      bytes.set(payload)
+      const file = fs.openSync(path, fs.OpenMode.WRITE_ONLY | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+      fs.writeSync(file.fd, bytes.buffer)
+      fs.closeSync(file)
+    } catch (e) {
+      hilog.warn(DOMAIN, 'WebTerminal', 'write colorfgbg file failed: %{public}s', JSON.stringify(e))
     }
   }
 
@@ -793,20 +843,9 @@ export default struct WebTerminal {
           start = 4;
         }
 
-        while (start < completeEnd) {
-          let end = Math.min(start + this.WRITE_SLICE, completeEnd);
-          if (end < completeEnd) {
-            const hold = this.incompleteStart(merged.subarray(start, end));
-            if (hold > 0) {
-              end = start + hold;
-            } else if (hold === 0 && start + 1 < completeEnd) {
-              const seqEnd = this.escapeEnd(merged, start, completeEnd);
-              end = seqEnd > start ? seqEnd : start + 1;
-            }
-          }
-          await this.writeBytesToTerm(merged.subarray(start, end));
-          start = end;
-        }
+        // completeEnd 已由 incompleteStart 保证为完整序列边界，整块一次写入，
+        // 避免逐片 runJavaScript 的 IPC 往返开销（TUI 大量输出时卡顿主因）。
+        await this.writeBytesToTerm(merged.subarray(0, completeEnd))
       }
     } catch (e) {
       hilog.error(DOMAIN, 'WebTerminal', 'flushData failed: %{public}s', JSON.stringify(e));
@@ -929,6 +968,7 @@ export default struct WebTerminal {
 
   onBgColorChanged() {
     this.webviewController.runJavaScript(`exports.setBackgroundColor(${JSON.stringify(this.termBgColor)})`)
+    this.writeColorFgBgFile()
   }
 
   onBgImageChanged() {
@@ -952,6 +992,13 @@ export default struct WebTerminal {
     this.webviewController.runJavaScript(`exports.setItalic(${this.termItalic})`)
   }
 
+  onKeyboardHeightChanged() {
+    // 键盘弹起/收起后 WebView 尺寸变化，需重新 fit 终端
+    const fit = () => this.webviewController.runJavaScript('exports.fit()')
+    setTimeout(fit, 60)
+    setTimeout(fit, 200)
+  }
+
   setApplicationMode(mode: boolean) {
     this.applicationMode = mode
     hilog.info(DOMAIN, 'WebTerminal', 'set applicationMode to %{public}s', this.applicationMode);
@@ -968,9 +1015,8 @@ export default struct WebTerminal {
         if (this.windowHeightListenerRegistered) return
         this.windowHeightListenerRegistered = true
         // 获取初始窗口高度
-        mainWindow.getLastBounds().then((bounds) => {
-          this.windowHeight = bounds.height
-        })
+        const props = mainWindow.getWindowProperties()
+        this.windowHeight = props.windowRect.height
         // 监听窗口高度变化（软键盘弹出/收起时窗口高度会变）
         mainWindow.on('windowSizeChange', (windowSize) => {
           const newHeight = windowSize.height

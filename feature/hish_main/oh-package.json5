@@ -6,6 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "libhish_main.so": "file:./src/main/cpp/types/libhish_main"
+    "libhish_main.so": "file:./src/main/cpp/types/libhish_main",
+    "libcodexhost.so": "file:./src/main/types/libcodexhost"
   }
 }
