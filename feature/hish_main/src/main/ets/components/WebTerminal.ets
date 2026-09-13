@@ -389,7 +389,9 @@ export default struct WebTerminal {
     .hitTestBehavior(HitTestMode.Transparent)
   }
 
-  // 根据终端背景色亮度返回虚拟键字色：深背景白字、浅背景深字，使快捷键颜色跟随终端背景
+  @Builder
+  buildVirtualKeys() {
+    Column() {
       if (this.fnPressed) {
         Row() {
           this.toggleFnKey('FN', () => this.toggleFn());
