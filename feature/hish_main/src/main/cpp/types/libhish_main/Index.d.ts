@@ -40,24 +40,36 @@ export type NativeCollaborationModeMask = {
 export type NativeCodexProviderRecord = {
   id?: string;
   name?: string;
+  appType?: string;
+  mode?: string;
   baseUrl?: string;
+  base_url?: string;
   apiKey?: string;
+  api_key?: string;
   model?: string;
-  contextWindow?: string;
-  modelAutoCompactTokenLimit?: string;
+  contextWindow?: number;
+  modelAutoCompactTokenLimit?: number;
   enabled?: boolean;
+  isActive?: boolean;
+  syncStatus?: string;
+  updatedAt?: string;
 };
 
 export type NativeCodexProviderCatalog = {
+  version?: number;
+  activeProviderId?: string;
   providers?: NativeCodexProviderRecord[];
+  updatedAt?: string;
 };
 
 export type NativeCodexProviderConfig = {
   baseUrl?: string;
+  base_url?: string;
   apiKey?: string;
+  api_key?: string;
   model?: string;
-  contextWindow?: string;
-  modelAutoCompactTokenLimit?: string;
+  contextWindow?: number;
+  modelAutoCompactTokenLimit?: number;
 };
 
 export type NativeWorkspaceAccessStatus = {
