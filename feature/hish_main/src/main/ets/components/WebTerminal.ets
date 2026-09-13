@@ -7,6 +7,7 @@ import { pasteboard, deviceInfo } from '@kit.BasicServicesKit'
 import appOption, { CursorShape, savePreference, UserFont, UserFontData } from '../model/appOption';
 import { common } from '@kit.AbilityKit';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
+import router from '@ohos.router';
 import stringToArrayBuffer from '../lib/stringToArrayBuffer';
 import fileToDataUrl from '../lib/fileToDataUrl';
 import { QemuAgentManager, AgentPriority } from '../lib/QemuAgentManager';
@@ -207,15 +208,15 @@ export default struct WebTerminal {
     const regularOptions: MenuElement[] = [{
       value: 'AI 工作台',
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.list_bullet')).fontSize($r('sys.float.Title_S')),
-      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/AiWorkbench' })
+      action: () => { router.pushUrl({ url: 'pages/AiWorkbench' }) }
     }, {
       value: $r('app.string.menu_emulator_management'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.more')).fontSize($r('sys.float.Title_S')),
-      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/EmulatorManagementPage' })
+      action: () => { router.pushUrl({ url: 'pages/EmulatorManagementPage' }) }
     }, {
       value: $r('app.string.menu_shared_folder'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.folder')).fontSize($r('sys.float.Title_S')),
-      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SharedFolderPage' })
+      action: () => { router.pushUrl({ url: 'pages/SharedFolderPage' }) }
     }, {
       value: $r('app.string.menu_fix_mirror'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.arrow_clockwise')).fontSize($r('sys.float.Title_S')),
@@ -223,7 +224,7 @@ export default struct WebTerminal {
     }, {
       value: $r('app.string.menu_settings'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.gearshape')).fontSize($r('sys.float.Title_S')),
-      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SettingsPage' })
+      action: () => { router.pushUrl({ url: 'pages/SettingsPage' }) }
     }]
     return regularOptions;
   }
