@@ -202,7 +202,7 @@ export default struct WebTerminal {
   private settingsButtonOptions(): MenuElement[] {
     const regularOptions: MenuElement[] = [{
       value: 'AI 工作台',
-      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.sparkles')).fontSize($r('sys.float.Title_S')),
+      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.list_bullet')).fontSize($r('sys.float.Title_S')),
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/AiWorkbench' })
     }, {
       value: $r('app.string.menu_emulator_management'),

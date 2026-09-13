@@ -218,8 +218,8 @@ function normalizeCollaborationMode(rawMode: string | null | undefined): string 
 }
 
 function normalizeCollaborationModeOption(rawOption: NativeCollaborationModeMask | undefined): CollaborationModeOption {
-  const rawEffort = rawOption?.reasoning_effort;
-  const reasoningEffort = rawEffort === undefined ? undefined : (rawEffort === null ? null : rawEffort);
+  const rawEffort: string | null | undefined = rawOption?.reasoning_effort;
+  const reasoningEffort: string | null | undefined = rawEffort === undefined ? undefined : (rawEffort === null ? null : rawEffort);
   return new CollaborationModeOption(
     rawOption?.name ?? '',
     normalizeCollaborationMode(rawOption?.mode ?? 'default'),
@@ -292,7 +292,7 @@ export function saveEmbeddedCodexProviderConfig(
       : null;
     const resolvedContextWindow = contextWindow ?? currentConfig?.contextWindow ?? 0;
     const resolvedModelAutoCompactTokenLimit = modelAutoCompactTokenLimit ?? currentConfig?.modelAutoCompactTokenLimit ?? 0;
-    const response = nativeBridge!.saveProviderConfig(
+    const response: string = nativeBridge!.saveProviderConfig(
       codexHome,
       baseUrl,
       apiKey,
@@ -343,7 +343,7 @@ export function getSkillsRegistry(codexHome: string): string {
     return '{"version":1,"skills":[],"updatedAt":"0"}';
   }
   try {
-    const result = nativeBridge!.getSkillsRegistry(codexHome);
+    const result: string | undefined = nativeBridge!.getSkillsRegistry(codexHome);
     return result !== undefined && result !== null && result.length > 0 ? result : '{"version":1,"skills":[],"updatedAt":"0"}';
   } catch (_err) {
     return '{"version":1,"skills":[],"updatedAt":"0"}';
@@ -366,7 +366,7 @@ export function getSkillsRepos(codexHome: string): string {
     return '{"version":1,"repos":[]}';
   }
   try {
-    const result = nativeBridge!.getSkillsRepos(codexHome);
+    const result: string | undefined = nativeBridge!.getSkillsRepos(codexHome);
     return result !== undefined && result !== null && result.length > 0 ? result : '{"version":1,"repos":[]}';
   } catch (_err) {
     return '{"version":1,"repos":[]}';
@@ -400,7 +400,7 @@ export function installSkillFromDir(codexHome: string, sourceDir: string, skillJ
     return '{"error":"native bridge unavailable"}';
   }
   try {
-    const result = nativeBridge!.installSkillFromDir(codexHome, sourceDir, skillJson);
+    const result: string | undefined = nativeBridge!.installSkillFromDir(codexHome, sourceDir, skillJson);
     return result !== undefined && result !== null && result.length > 0
       ? result
       : '{"error":"native bridge returned empty result"}';
@@ -426,7 +426,7 @@ export function setSkillEnabledNative(codexHome: string, skillId: string, enable
     return '{}';
   }
   try {
-    const result = nativeBridge!.setSkillEnabled(codexHome, skillId, enabled ? 1 : 0);
+    const result: string | undefined = nativeBridge!.setSkillEnabled(codexHome, skillId, enabled ? 1 : 0);
     return result !== undefined && result !== null && result.length > 0 ? result : '{}';
   } catch (_err) {
     return '{}';
@@ -438,7 +438,7 @@ export function reconcileSkills(codexHome: string): string {
     return '{"removed":[],"registered":[]}';
   }
   try {
-    const result = nativeBridge!.reconcileSkills(codexHome);
+    const result: string | undefined = nativeBridge!.reconcileSkills(codexHome);
     return result !== undefined && result !== null && result.length > 0 ? result : '{"removed":[],"registered":[]}';
   } catch (_err) {
     return '{"removed":[],"registered":[]}';
@@ -450,7 +450,7 @@ export function getPromptsRegistry(codexHome: string): string {
     return '{"version":1,"prompts":[],"updatedAt":"0"}';
   }
   try {
-    const result = nativeBridge!.getPromptsRegistry(codexHome);
+    const result: string | undefined = nativeBridge!.getPromptsRegistry(codexHome);
     return result !== undefined && result !== null && result.length > 0 ? result : '{"version":1,"prompts":[],"updatedAt":"0"}';
   } catch (_err) {
     return '{"version":1,"prompts":[],"updatedAt":"0"}';
@@ -495,7 +495,7 @@ export function enablePromptNative(codexHome: string, promptId: string): string 
     return '{}';
   }
   try {
-    const result = nativeBridge!.enablePrompt(codexHome, promptId);
+    const result: string | undefined = nativeBridge!.enablePrompt(codexHome, promptId);
     return result !== undefined && result !== null && result.length > 0 ? result : '{}';
   } catch (_err) {
     return '{}';
@@ -996,7 +996,7 @@ function getStatusTask(): string {
     return '{"code":1,"running":false,"serverUrl":"","message":"libhish_main.so failed to load."}';
   }
   try {
-    const raw = mod.getStatus();
+    const raw: NativeCodexHostStatus = mod.getStatus();
     return JSON.stringify({
       code: raw.code ?? 0,
       running: raw.running === true,
