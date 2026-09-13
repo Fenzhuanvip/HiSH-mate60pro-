@@ -125,6 +125,13 @@ export default class EntryAbility extends UIAbility {
         navigationBarContentColor: '#FFFFFF'
       });
 
+      // 获取状态栏高度，存入 AppStorage 供 WebTerminal 顶部留白
+      const avoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      AppStorage.setOrCreate('statusBarHeight', avoidArea.topRect.height);
+
+      // AI 工作台：默认跳过华为账号登录，直接进入工作台
+      AppStorage.setOrCreate('arkPilotLoggedIn', true);
+
       // 监听软键盘高度变化，存入 AppStorage 供 WebTerminal 调整虚拟键条位置
       // setWindowLayoutFullScreen(true) 下 KeyboardAvoidMode.OFFSET 可能不生效，
       // 需组件层根据键盘高度手动上移虚拟键条

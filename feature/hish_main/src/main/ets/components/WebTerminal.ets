@@ -51,6 +51,7 @@ export default struct WebTerminal {
   @Watch('onBgBlurChanged') @StorageProp(appOption.terminalBackgroundBlur) termBgBlur: number = 0
   @Watch('onUserFontsChanged') @StorageProp(appOption.terminalUserFonts) termUserFonts: UserFont[] = []
   @Watch('onKeyboardHeightChanged') @StorageProp('keyboardHeight') keyboardHeight: number = 0
+  @StorageProp('statusBarHeight') statusBarHeight: number = 0
   webviewController: WebviewController = new webview.WebviewController()
   utf8Decoder = util.TextDecoder.create('utf-8', { ignoreBOM: true })
   areaChangeFitTimer?: number = undefined
@@ -362,6 +363,7 @@ export default struct WebTerminal {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.statusBarHeight > 0 ? `${this.statusBarHeight}px` : 0 })
     }
     .width('100%')
     .height('100%')
