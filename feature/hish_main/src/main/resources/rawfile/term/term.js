@@ -466,9 +466,20 @@ function setupMirroredInputFix(termEl) {
 // --- Implementation of exports matching term.js.bak ---
 
 // exports.write(data) - Write data from VM to terminal
+// Optimized: reduced Promise chain overhead for high-throughput scenarios
 var writeChain = Promise.resolve();
+var writeChainDepth = 0;
+var MAX_CHAIN_DEPTH = 50;
 
 function enqueueTermWrite(buf, applicationMode) {
+    writeChainDepth++;
+    // If chain is getting too deep (heavy output), collapse pending writes
+    if (writeChainDepth > MAX_CHAIN_DEPTH) {
+        // Just do a fire-and-forget write to drain the backlog
+        try { term.write(buf); } catch(e) {}
+        writeChainDepth--;
+        return Promise.resolve('ok');
+    }
     writeChain = writeChain.catch(function () {}).then(function () {
         return new Promise(function (resolve) {
             try {
@@ -480,10 +491,12 @@ function enqueueTermWrite(buf, applicationMode) {
                             }
                         }
                     } catch (e2) {}
+                    writeChainDepth--;
                     resolve();
                 });
             } catch (e) {
                 console.error("term.write failed", e);
+                writeChainDepth--;
                 resolve();
             }
         });
@@ -586,60 +599,61 @@ exports.setItalic = (enabled) => {
 
 // --- Terminal appearance: background color / image / gaussian blur ---
 
-// 根据背景色亮度选择前景色：亮背景用深色字，暗背景用浅色字，避免白底白字看不见
-function pickContrastForeground(hex) {
-    try {
-        var h = String(hex).replace('#', '');
-        if (h.length === 8) {
-            h = h.slice(2); // 去掉 alpha 前缀
-        }
-        if (h.length !== 6) {
-            return '#ffffff';
-        }
-        var r = parseInt(h.slice(0, 2), 16);
-        var g = parseInt(h.slice(2, 4), 16);
-        var b = parseInt(h.slice(4, 6), 16);
-        // 感知亮度（YIQ），>150 视为亮背景
-        var brightness = (r * 299 + g * 587 + b * 114) / 1000;
-        return brightness > 150 ? '#1a1a1a' : '#ffffff';
-    } catch (e) {
-        return '#ffffff';
+var currentBgColor = '#000000';
+
+function hexLuminance(color) {
+    var hex = String(color || '').trim();
+    if (hex.charAt(0) === '#') {
+        hex = hex.slice(1);
+    }
+    if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    if (hex.length < 6) {
+        return 0;
+    }
+    var r = parseInt(hex.slice(0, 2), 16) / 255;
+    var g = parseInt(hex.slice(2, 4), 16) / 255;
+    var b = parseInt(hex.slice(4, 6), 16) / 255;
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+        return 0;
+    }
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function pickForeground(color) {
+    return hexLuminance(color) > 0.55 ? '#000000' : '#ffffff';
+}
+
+function applyTerminalTheme(color, transparent) {
+    currentBgColor = color || currentBgColor || '#000000';
+    var fg = pickForeground(currentBgColor);
+    var bg = transparent ? 'rgba(0,0,0,0)' : currentBgColor;
+    document.body.style.backgroundColor = transparent ? 'transparent' : currentBgColor;
+    document.body.style.color = fg;
+    if (term) {
+        term.options.theme = Object.assign({}, term.options.theme, {
+            background: bg,
+            foreground: fg,
+            cursor: fg,
+            cursorAccent: currentBgColor,
+            selectionBackground: fg === '#000000' ? '#00000033' : '#ffffff33'
+        });
     }
 }
 
 exports.setBackgroundColor = (color) => {
     if (!color) return;
-    document.body.style.backgroundColor = color;
-    // 同步更新 xterm.js 终端背景色，否则只有四周变色，终端本身还是黑的
-    // 同时按背景亮度自适应前景色，避免白色背景 + 白色字体导致文字不可见
-    if (term) {
-        var fg = pickContrastForeground(color);
-        term.options.theme = Object.assign({}, term.options.theme, {
-            background: color,
-            foreground: fg,
-            cursor: fg
-        });
-    }
+    var bgEl = document.getElementById('terminal-bg');
+    var hasImage = !!(bgEl && bgEl.style.backgroundImage && bgEl.style.backgroundImage !== 'none');
+    applyTerminalTheme(color, hasImage);
 };
 
 exports.setBackgroundImage = (dataUrl) => {
     var bg = document.getElementById('terminal-bg');
     if (!bg) return;
     bg.style.backgroundImage = dataUrl ? 'url("' + dataUrl + '")' : 'none';
-    // 有背景图时终端背景设透明，否则恢复实色
-    if (term) {
-        if (dataUrl) {
-            term.options.theme = Object.assign({}, term.options.theme, { background: 'rgba(0,0,0,0)' });
-        } else {
-            var savedBg = document.body.style.backgroundColor || '#000000';
-            var fg = pickContrastForeground(savedBg);
-            term.options.theme = Object.assign({}, term.options.theme, {
-                background: savedBg,
-                foreground: fg,
-                cursor: fg
-            });
-        }
-    }
+    applyTerminalTheme(currentBgColor, !!dataUrl);
 };
 
 exports.setBackgroundBlur = (px) => {
