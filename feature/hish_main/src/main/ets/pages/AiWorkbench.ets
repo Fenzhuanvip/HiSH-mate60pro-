@@ -49,6 +49,7 @@ import { ArkPilotDeleteDialog } from "../components/ai/DeleteDialog";
 import { ArkPilotLogoutDialog } from "../components/ai/LogoutDialog";
 import { ProviderSetupWizard } from "../components/ai/ProviderSetupWizard";
 import { ApprovalCard } from "../components/ai/ApprovalCard";
+import { TerminalBridge } from "../backend/TerminalBridge";
 
 const INDEX_DOMAIN = 0x0000;
 const INDEX_TAG = 'IndexProviderDebug';
@@ -3070,18 +3071,24 @@ struct Index {
   }
 
   private sendMessage(): void {
-    const prompt: string = this.draft.trim();
-    if (prompt.length === 0 || this.isWorkspaceRunning(this.activeWorkspaceId)) {
+    const rawPrompt: string = this.draft.trim();
+    if (rawPrompt.length === 0 || this.isWorkspaceRunning(this.activeWorkspaceId)) {
       return;
     }
     if (this.providerApiKey.trim().length === 0) {
-      promptAction.showToast({ message: '尚未配置 API，请到设置界面进行配置', duration: 3000 });
+      promptAction.showToast({ message: "尚未配置 API，请到设置界面进行配置", duration: 3000 });
       return;
+    }
+    /* 附上终端最近输出作为上下文，让 AI 能看到终端状态 */
+    const terminalOutput: string = TerminalBridge.getRecentOutput(30);
+    let prompt: string = rawPrompt;
+    if (terminalOutput.length > 0) {
+      prompt = "[终端最近输出]\n```\n" + terminalOutput + "\n```\n\n" + rawPrompt;
     }
     this.resumeMessageAutoFollow();
     this.scheduleMessageScrollToBottom(true);
     this.savedDraft = this.draft;
-    this.draft = '';
+    this.draft = "";
     void this.runTurn(prompt);
   }
 
@@ -3922,6 +3929,36 @@ struct Index {
 
   private async declinePending(): Promise<void> {
     await codexBackend.declinePendingRequest();
+  }
+
+  /**
+   * 把 AI 生成的命令送到 QEMU 终端执行。
+   * 从审批请求的 detail 中提取命令文本，调 TerminalBridge.sendCommand()。
+   */
+  private sendCommandToTerminal(): void {
+    if (this.pendingApproval === null) {
+      return;
+    }
+    const detail: string = this.pendingApproval.detail;
+    /* approval.detail 对于 command 类型通常包含命令文本，
+       可能有多行（命令 + 说明），取第一个非空行作为命令 */
+    const lines: string[] = detail.split("\n");
+    let command: string = "";
+    for (const line of lines) {
+      const trimmed: string = line.trim();
+      if (trimmed.length > 0) {
+        command = trimmed;
+        break;
+      }
+    }
+    if (command.length === 0) {
+      return;
+    }
+    /* 去掉可能的前缀符号（如 $ 或 # 提示符） */
+    command = command.replace(/^[$#>]\s*/, "");
+    TerminalBridge.sendCommand(command);
+    /* 同时拒绝审批 — 命令已送到终端，不需要 AI sandbox 再执行一遍 */
+    void this.declinePending();
   }
 
   private async selectWorkspace(item: WorkspaceItem): Promise<void> {
@@ -10027,7 +10064,7 @@ struct Index {
       .width('100%')
 
       if (!this.isPhoneBreakpoint() && this.pendingApproval !== null) {
-        ApprovalCard({ approval: this.pendingApproval!, onApprove: () => { void this.approvePending(); }, onDecline: () => { void this.declinePending(); } })
+        ApprovalCard({ approval: this.pendingApproval!, onApprove: () => { void this.approvePending(); }, onDecline: () => { void this.declinePending(); }, onSendToTerminal: () => { this.sendCommandToTerminal(); } })
       }
 
       if (!this.isPhoneBreakpoint() && this.pendingRequestUserInput !== null) {
@@ -11897,7 +11934,7 @@ struct Index {
               .layoutWeight(1)
             Column() {
               if (this.pendingApproval !== null) {
-                ApprovalCard({ approval: this.pendingApproval!, onApprove: () => { void this.approvePending(); }, onDecline: () => { void this.declinePending(); } })
+                ApprovalCard({ approval: this.pendingApproval!, onApprove: () => { void this.approvePending(); }, onDecline: () => { void this.declinePending(); }, onSendToTerminal: () => { this.sendCommandToTerminal(); } })
               }
               if (this.pendingRequestUserInput !== null) {
                 this.requestUserInputCard(this.pendingRequestUserInput!)

@@ -1,7 +1,7 @@
 import { CodexApprovalRequest } from '../../backend/CodexBackend';
 
 /**
- * 审批卡片 — 当 AI 要执行命令时弹出，用户选允许或拒绝。
+ * 审批卡片 — 当 AI 要执行命令时弹出，用户选允许、拒绝或送到终端。
  * 从 AiWorkbench.ets 提取，通过回调与父组件通信。
  */
 @Component
@@ -14,6 +14,7 @@ export struct ApprovalCard {
   // 回调
   onApprove: () => void = (): void => {}
   onDecline: () => void = (): void => {}
+  onSendToTerminal: () => void = (): void => {}
 
   private textStrong(): string {
     return this.isDark ? '#F1F5F9' : '#0F172A'
@@ -60,19 +61,8 @@ export struct ApprovalCard {
         .margin({ top: 10 })
 
       Row() {
-        Button('允许')
-          .height(34)
-          .fontSize(12)
-          .backgroundColor('#27272A')
-          .fontColor('#FFFFFF')
-          .borderRadius(8)
-          .onClick(() => {
-            this.onApprove()
-          })
-
         Button('拒绝')
           .height(34)
-          .margin({ left: 8 })
           .fontSize(12)
           .backgroundColor(this.panelBg())
           .fontColor(this.textStrong())
@@ -81,6 +71,31 @@ export struct ApprovalCard {
           .onClick(() => {
             this.onDecline()
           })
+
+        Button('允许')
+          .height(34)
+          .margin({ left: 8 })
+          .fontSize(12)
+          .backgroundColor('#27272A')
+          .fontColor('#FFFFFF')
+          .borderRadius(8)
+          .onClick(() => {
+            this.onApprove()
+          })
+
+        // "在终端执行" — 仅命令类型审批显示
+        if (this.approval.kind === 'command') {
+          Button('在终端执行')
+            .height(34)
+            .margin({ left: 8 })
+            .fontSize(12)
+            .backgroundColor('#1E40AF')
+            .fontColor('#FFFFFF')
+            .borderRadius(8)
+            .onClick(() => {
+              this.onSendToTerminal()
+            })
+        }
       }
       .width('100%')
       .justifyContent(FlexAlign.End)

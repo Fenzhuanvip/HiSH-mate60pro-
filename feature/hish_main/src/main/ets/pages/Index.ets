@@ -352,6 +352,13 @@ struct PcIndex {
 struct PhoneOrTablet {
   @StorageProp(appOption.displayStatusBar) displayStatusBar: boolean = false
   @State private activeTab: number = 0
+  @Watch("onTerminalCommandSent") @StorageProp("terminalCommandSent") terminalCommandSent: number = 0
+  /* 当 AI 往终端发了命令，自动切到终端 Tab 让用户看结果 */
+  onTerminalCommandSent(): void {
+    if (this.terminalCommandSent > 0) {
+      this.activeTab = 0;
+    }
+  }
 
   build() {
     Column() {

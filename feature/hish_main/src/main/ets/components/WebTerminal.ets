@@ -2,6 +2,7 @@ import util from '@ohos.util';
 import { buffer } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import napi from 'libhish_main.so';
+import { TerminalBridge } from "../backend/TerminalBridge";
 import { webview } from '@kit.ArkWeb';
 import { pasteboard, deviceInfo } from '@kit.BasicServicesKit'
 import appOption, { CursorShape, savePreference, UserFont, UserFontData } from '../model/appOption';
@@ -645,6 +646,7 @@ export default struct WebTerminal {
   private onData(ab: ArrayBuffer) {
     try {
       this.pendingChunks.push(new Uint8Array(ab));
+      TerminalBridge.captureOutput(ab);
       if (this.flushTimeoutID === undefined) {
         this.flushTimeoutID = setTimeout(() => {
           this.flushTimeoutID = undefined;
