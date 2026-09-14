@@ -7,3 +7,8 @@ export { RootfsManagement } from './src/main/ets/pages/RootfsManagement';
 export { SharedFolderPage } from './src/main/ets/pages/SharedFolderPage';
 export { UserGuidePage } from './src/main/ets/pages/UserGuidePage';
 export { GuideWebPage } from './src/main/ets/pages/GuideWebPage';
+export { Index as AiWorkbenchPage } from './src/main/ets/pages/AiWorkbench';
+export { SettingsPage as AiSettingsPage } from './src/main/ets/pages/AiSettingsPage';
+export { LoginPage as AiLoginPage } from './src/main/ets/pages/AiLoginPage';
+export { AddProviderPage as AiAddProviderPage } from './src/main/ets/pages/AiAddProviderPage';
+export { LegalPage as AiLegalPage } from './src/main/ets/pages/AiLegalPage';
