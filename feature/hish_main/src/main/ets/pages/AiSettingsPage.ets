@@ -1,4 +1,5 @@
 import router from '@ohos.router';
+import { CodeArtsConfigPanel } from '../components/ai/CodeArtsConfigPanel';
 import { SettingsTab, ProviderRecord, ProviderCategory, ApiWireFormat, McpServerRecord } from '../backend/ConsoleModels';
 import { BUILTIN_PROVIDER_PRESETS, EndpointSpeedResult, ChatProbeResult, ApiValidationResult } from '../apim/ApiTypes';
 import { apiManagementVM } from '../apim/ApiManagementViewModel';
@@ -96,7 +97,8 @@ struct SettingsPage {
     new SettingsNavItem('api', 'API', '服务商与模型接入', '#8B5CF6'),
     new SettingsNavItem('skills', 'Skills', 'Skills 与仓库源', '#14B8A6'),
     new SettingsNavItem('prompts', 'Prompt', '预设指令与工作约束', '#F59E0B'),
-    new SettingsNavItem('mcp', 'MCP', '桥接与工具通道', '#0A84FF')
+    new SettingsNavItem('mcp', 'MCP', '桥接与工具通道', '#0A84FF'),
+    new SettingsNavItem('codearts', 'CodeArts', '云码道仓库管理', '#FF6B35')
   ];
 
   @StorageProp('arkPilotBreakpoint')
@@ -1330,6 +1332,8 @@ struct SettingsPage {
 
   private tabAccent(tab: SettingsTab): string {
     switch (tab) {
+      case 'codearts':
+        return '#FF6B35';
       case 'mcp':
         return '#0A84FF';
       case 'skills':
@@ -1471,6 +1475,8 @@ struct SettingsPage {
 
   private navLabel(tab: SettingsTab): string {
     switch (tab) {
+      case 'codearts':
+        return 'CodeArts';
       case 'mcp':
         return 'MCP';
       case 'skills':
@@ -2514,12 +2520,19 @@ struct SettingsPage {
   }
 
   @Builder
+  private codeartsPanel() {
+    CodeArtsConfigPanel()
+  }
+
+  @Builder
   private contentArea() {
     Scroll() {
       Column() {
         this.contentHero()
 
-        if (this.activeTab === 'skills') {
+        if (this.activeTab === 'codearts') {
+          this.codeartsPanel()
+        } else if (this.activeTab === 'skills') {
           this.skillsPanel()
         } else if (this.activeTab === 'mcp') {
           this.mcpPanel()
@@ -2588,6 +2601,8 @@ struct SettingsPage {
 
   private heroTitle(): string {
     switch (this.activeTab) {
+      case 'codearts':
+        return 'CodeArts 仓库';
       case 'mcp':
         return 'MCP 服务';
       case 'skills':
@@ -2601,6 +2616,8 @@ struct SettingsPage {
 
   private heroSubtitle(): string {
     switch (this.activeTab) {
+      case 'codearts':
+        return 'AK/SK 凭证与仓库管理';
       case 'mcp':
         return '连接和工具配置';
       case 'skills':
