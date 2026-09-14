@@ -90,9 +90,9 @@ class TerminalBridgeImpl {
   sendCommand(command: string): void {
     try {
       const cmd = command.trim() + '\n';
-      const encoder = util.TextEncoder.createInto('utf-8');
-      const buffer = encoder.encodeInto(cmd);
-      napi.sendInput(buffer.buffer);
+      const encoder: util.TextEncoder = util.TextEncoder.create('utf-8');
+      const buf: Uint8Array = encoder.encodeInto(cmd);
+      napi.sendInput(buf.buffer);
 
       // 触发事件：递增计数器，Index.ets 用 @StorageProp 监听
       this.commandCounter += 1;
