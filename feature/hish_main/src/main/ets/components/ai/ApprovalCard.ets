@@ -24,7 +24,7 @@ export struct ApprovalCard {
     return this.isDark ? '#1E293B' : '#FFFFFF'
   }
 
-  private borderColor(): string {
+  private themeBorderColor(): string {
     return this.isDark ? '#334155' : '#E2E8F0'
   }
 
@@ -67,7 +67,7 @@ export struct ApprovalCard {
           .backgroundColor(this.panelBg())
           .fontColor(this.textStrong())
           .borderRadius(8)
-          .border({ width: 0.5, color: this.borderColor() })
+          .border({ width: 0.5, color: this.themeBorderColor() })
           .onClick(() => {
             this.onDecline()
           })
@@ -105,7 +105,7 @@ export struct ApprovalCard {
     .width('100%')
     .padding(14)
     .backgroundColor(this.cardBg())
-    .border({ width: 0.5, color: this.borderColor() })
+    .border({ width: 0.5, color: this.themeBorderColor() })
     .borderRadius(10)
     .margin({ top: 10 })
   }

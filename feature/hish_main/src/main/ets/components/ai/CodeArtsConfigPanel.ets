@@ -1,4 +1,4 @@
-import { codeArtsService, CODEARTS_REGIONS, CodeArtsConfig, CodeArtsProject, CodeArtsRepo } from '../backend/CodeArtsService';
+import { codeArtsService, CODEARTS_REGIONS, CodeArtsConfig, CodeArtsProject, CodeArtsRepo } from '../../backend/CodeArtsService';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import pasteboard from '@ohos.pasteboard';
@@ -219,7 +219,7 @@ export struct CodeArtsConfigPanel {
           .width(50)
         Select(this.getRegionOptions())
           .value(this.getRegionName())
-          .fontSize(12)
+
           .layoutWeight(1)
           .onSelect((index: number) => {
             this.region = CODEARTS_REGIONS[index].id;
@@ -273,7 +273,7 @@ export struct CodeArtsConfigPanel {
       } else {
         Select(this.getProjectOptions())
           .value(this.getSelectedProjectName())
-          .fontSize(12)
+
           .width('100%')
           .onSelect((index: number) => {
             this.selectedProjectId = this.projects[index].id.toString();

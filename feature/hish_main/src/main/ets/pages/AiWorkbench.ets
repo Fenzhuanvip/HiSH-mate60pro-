@@ -42,7 +42,7 @@ import uri from '@ohos.uri';
 import taskpool from '@ohos.taskpool';
 import { copyStandaloneFileChunk, deletePathTask } from '../backend/ProjectDirFileOps';
 import { huaweiAccountService } from '../account/HuaweiAccountService';
-import { MermaidWebDiagram } from "../components/ai/MermaidWebDiagram";
+import { MermaidWebDiagram, MermaidScaleEntry } from "../components/ai/MermaidWebDiagram";
 import { ArkPilotProjectCreateDialog } from "../components/ai/ProjectCreateDialog";
 import { ArkPilotNameDialog } from "../components/ai/NameDialog";
 import { ArkPilotDeleteDialog } from "../components/ai/DeleteDialog";
@@ -11871,9 +11871,6 @@ export struct Index {
         .alignItems(HorizontalAlign.Center)
         .backgroundColor('rgba(0,0,0,0.5)')
       }
-        .height('100%')
-        .backgroundColor(this.themeRootBackground())
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
       Stack({ alignContent: Alignment.BottomEnd }) {
         Column() {
@@ -12015,6 +12012,8 @@ export struct Index {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor(this.themeRootBackground())
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .onClick(() => {
       this.showProjectMenuId = '';
       this.showSessionMenuId = '';

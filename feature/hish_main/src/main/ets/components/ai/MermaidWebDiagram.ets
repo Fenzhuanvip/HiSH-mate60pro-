@@ -1,6 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 
-class MermaidScaleEntry {
+export class MermaidScaleEntry {
   key: string;
   scale: number;
 
