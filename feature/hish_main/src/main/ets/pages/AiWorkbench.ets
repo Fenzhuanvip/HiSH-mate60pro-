@@ -11984,7 +11984,7 @@ export struct Index {
               .width('100%')
 
               Scroll() {
-                Image($r('app.media.splash_bg'))
+                Image($r('app.media.background'))
                   .width('100%')
                   .borderRadius(12)
                   .objectFit(ImageFit.Contain)
