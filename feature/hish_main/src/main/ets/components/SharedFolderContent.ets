@@ -621,7 +621,7 @@ export struct SharedFolderContent {
     const names = await fs.listFile(dir);
     this.files = names
       .filter(it => {
-        return it !== '.virtfs_metadata' && it !== '.virtfs_metadata_root'
+        return it !== '.virtfs_metadata' && it !== '.virtfs_metadata_root' && it !== '.hish-winsize' && it !== '.hish-colorfgbg'
       })
       .map((it) => {
         const full = dir + '/' + it;
