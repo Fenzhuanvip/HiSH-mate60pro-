@@ -10,8 +10,9 @@ import EditEmulatorContent from "../components/EditEmulatorContent";
 import { Emulator } from "../model/Emulator";
 import RootfsManagementContent from "../components/RootfsManagementContent";
 import UserGuide from "../components/UserGuide";
-import { webview } from "@kit.ArkWeb";
+import { webview } from '@kit.ArkWeb';
 import VmStatusBar from '../components/VmStatusBar';
+import router from '@ohos.router';
 
 
 @Component
@@ -81,6 +82,31 @@ struct PcIndex {
         }
 
         Blank()
+
+        // AI 工作台入口 — 顶部按钮，不再藏在终端菜单里
+        Button({
+          type: ButtonType.Normal,
+          buttonStyle: ButtonStyleMode.TEXTUAL,
+          controlSize: ControlSize.SMALL
+        }) {
+          Row() {
+            SymbolGlyph($r('sys.symbol.star'))
+              .fontSize('16vp')
+              .width(16)
+              .height(16)
+              .fontColor(['#ffffff'])
+            Text('AI 工作台')
+              .fontSize('14fp')
+              .fontColor($r('sys.color.white'))
+              .margin({ left: 4 })
+          }
+        }
+        .borderRadius(6)
+        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        .margin({ right: 10 })
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/AiWorkbench' })
+        })
 
         Row() {
           Button({
@@ -325,6 +351,7 @@ struct PcIndex {
 @Component
 struct PhoneOrTablet {
   @StorageProp(appOption.displayStatusBar) displayStatusBar: boolean = false
+  @State private activeTab: number = 0
 
   build() {
     Column() {
@@ -340,8 +367,69 @@ struct PhoneOrTablet {
         .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
       }
 
-      WebTerminal({ virtKeyEnabled: true })
+      // 主内容区
+      if (this.activeTab === 0) {
+        WebTerminal({ virtKeyEnabled: true })
+          .layoutWeight(1)
+      } else {
+        // AI 工作台 tab — 跳转到 AiWorkbench 页面
+        Column() {
+          Text('正在打开 AI 工作台…')
+            .fontSize(14)
+            .fontColor('#64748B')
+            .margin({ top: 40 })
+        }
+        .width('100%')
         .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+        .onAppear(() => {
+          router.pushUrl({ url: 'pages/AiWorkbench' })
+          this.activeTab = 0
+        })
+      }
+
+      // 底部 Tab 栏
+      Row() {
+        // 终端 Tab
+        Column() {
+          SymbolGlyph($r('sys.symbol.list_bullet'))
+            .fontSize('20vp')
+            .width(24)
+            .height(24)
+            .fontColor(this.activeTab === 0 ? ['#3B82F6'] : ['#64748B'])
+          Text('终端')
+            .fontSize('10fp')
+            .fontColor(this.activeTab === 0 ? '#3B82F6' : '#64748B')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          this.activeTab = 0
+        })
+
+        // AI 工作台 Tab
+        Column() {
+          SymbolGlyph($r('sys.symbol.star'))
+            .fontSize('20vp')
+            .width(24)
+            .height(24)
+            .fontColor(this.activeTab === 1 ? ['#3B82F6'] : ['#64748B'])
+          Text('AI 工作台')
+            .fontSize('10fp')
+            .fontColor(this.activeTab === 1 ? '#3B82F6' : '#64748B')
+            .margin({ top: 2 })
+        }
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/AiWorkbench' })
+        })
+      }
+      .width('100%')
+      .height(52)
+      .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+      .border({ width: { top: 0.5 }, color: { top: '#E2E8F0' } })
     }
     .width('100%')
     .height('100%')
@@ -352,7 +440,11 @@ struct PhoneOrTablet {
 export struct Index {
   build() {
     Column() {
-      PhoneOrTablet()
+      if (deviceInfo.deviceType === '2in1') {
+        PcIndex()
+      } else {
+        PhoneOrTablet()
+      }
     }
     .width('100%')
     .height('100%')
