@@ -1,6 +1,7 @@
 import { codeArtsService, CODEARTS_REGIONS, CodeArtsConfig, CodeArtsProject, CodeArtsRepo } from '../backend/CodeArtsService';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import pasteboard from '@ohos.pasteboard';
 
 const DOMAIN = 0x0ff4;
 
@@ -35,7 +36,7 @@ export struct CodeArtsConfigPanel {
 
   private async loadSavedConfig(): Promise<void> {
     try {
-      const ctx = AppStorage.get<common.UIAbilityContext>('mainWindow')?.getUIContext().getHostContext() as common.Context;
+      const ctx = this.getUIContext().getHostContext() as common.Context;
       const config = await codeArtsService.loadConfig(ctx);
       if (config !== null) {
         this.ak = config.ak;
@@ -63,7 +64,7 @@ export struct CodeArtsConfigPanel {
     this.statusMessage = '正在连接...';
     this.statusError = false;
     try {
-      const ctx = AppStorage.get<common.UIAbilityContext>('mainWindow')?.getUIContext().getHostContext() as common.Context;
+      const ctx = this.getUIContext().getHostContext() as common.Context;
       const config: CodeArtsConfig = {
         ak: this.ak.trim(),
         sk: this.sk.trim(),
@@ -131,7 +132,7 @@ export struct CodeArtsConfigPanel {
       this.newRepoName = '';
       this.newRepoDesc = '';
       void this.loadRepos();
-      this.statusMessage = `仓库 ${this.newRepoName} 创建成功`;
+      this.statusMessage = `仓库创建成功`;
       this.statusError = false;
     } catch (e) {
       this.statusMessage = `创建仓库失败: ${(e as Error).message}`;
@@ -400,8 +401,6 @@ export struct CodeArtsConfigPanel {
             .fontColor('#1E40AF')
             .margin({ left: 6 })
             .onClick(() => {
-              // 复制 clone URL 到剪贴板
-              const pasteboard = require('@ohos.pasteboard');
               const board = pasteboard.getSystemPasteboard();
               const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, repo.httpsUrl);
               board.setData(data);

@@ -1,10 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { crypto } from '@kit.CryptoArchitectureKit';
-import { buffer } from '@kit.ArkTS';
-import http from '@ohos.net.http';
-import preference from '@ohos.data.preferences';
+import { http } from '@kit.NetworkKit';
+import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
-import util from '@ohos.util';
+import { util } from '@kit.ArkTS';
 
 const DOMAIN = 0x0ff4;
 const TAG = 'CodeArtsService';
@@ -55,13 +54,59 @@ export interface CodeArtsConfig {
   projectId: string;
 }
 
+/** 将 Uint8Array 转 hex 字符串 */
+function uint8ToHex(bytes: Uint8Array): string {
+  const hexChars = '0123456789abcdef';
+  let result = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    result += hexChars.charAt((b >> 4) & 0x0f);
+    result += hexChars.charAt(b & 0x0f);
+  }
+  return result;
+}
+
+/** 手动解析 URL（ArkTS 无 URL 构造器） */
+function parseUrl(url: string): { host: string; path: string; query: string } {
+  // 去掉 https://
+  let rest = url;
+  if (rest.startsWith('https://')) {
+    rest = rest.substring(8);
+  } else if (rest.startsWith('http://')) {
+    rest = rest.substring(7);
+  }
+  // 分离 host 和 path
+  const slashIdx = rest.indexOf('/');
+  let host: string;
+  let pathAndQuery: string;
+  if (slashIdx >= 0) {
+    host = rest.substring(0, slashIdx);
+    pathAndQuery = rest.substring(slashIdx);
+  } else {
+    host = rest;
+    pathAndQuery = '/';
+  }
+  // 分离 path 和 query
+  const qIdx = pathAndQuery.indexOf('?');
+  let path: string;
+  let query: string;
+  if (qIdx >= 0) {
+    path = pathAndQuery.substring(0, qIdx);
+    query = pathAndQuery.substring(qIdx + 1);
+  } else {
+    path = pathAndQuery;
+    query = '';
+  }
+  return { host, path, query };
+}
+
 class CodeArtsServiceImpl {
   private config: CodeArtsConfig | null = null;
 
   /** 从本地偏好加载配置 */
   async loadConfig(context: common.Context): Promise<CodeArtsConfig | null> {
     try {
-      const prefs = await preference.getPreferences(context, PREFS_NAME);
+      const prefs = await preferences.getPreferences(context, PREFS_NAME);
       const ak = (await prefs.get(KEY_AK, '')).toString();
       const sk = (await prefs.get(KEY_SK, '')).toString();
       const region = (await prefs.get(KEY_REGION, 'cn-north-4')).toString();
@@ -79,7 +124,7 @@ class CodeArtsServiceImpl {
   /** 保存配置到本地偏好 */
   async saveConfig(context: common.Context, config: CodeArtsConfig): Promise<void> {
     try {
-      const prefs = await preference.getPreferences(context, PREFS_NAME);
+      const prefs = await preferences.getPreferences(context, PREFS_NAME);
       await prefs.put(KEY_AK, config.ak);
       await prefs.put(KEY_SK, config.sk);
       await prefs.put(KEY_REGION, config.region);
@@ -94,7 +139,7 @@ class CodeArtsServiceImpl {
   /** 清除配置 */
   async clearConfig(context: common.Context): Promise<void> {
     try {
-      const prefs = await preference.getPreferences(context, PREFS_NAME);
+      const prefs = await preferences.getPreferences(context, PREFS_NAME);
       await prefs.delete(KEY_AK);
       await prefs.delete(KEY_SK);
       await prefs.delete(KEY_REGION);
@@ -121,7 +166,7 @@ class CodeArtsServiceImpl {
   }
 
   /**
-   * 测试连接 — 调用 IAM 获取 token，验证 AK/SK 是否有效。
+   * 测试连接 — 调用 API 列出项目，验证 AK/SK 是否有效。
    */
   async testConnection(): Promise<{ success: boolean; message: string }> {
     if (this.config === null) {
@@ -188,25 +233,16 @@ class CodeArtsServiceImpl {
       throw new Error('未配置 AK/SK');
     }
 
-    const urlObj = this.parseUrl(url);
+    const urlObj = parseUrl(url);
     const datetime = this.getUtcDateTime();
-    const dateShort = datetime.substring(0, 8);
 
     // 1. Content-SHA256
     const contentSha256 = await this.sha256Hex(body);
 
     // 2. Canonical headers
     const host = urlObj.host;
-    const headers: Record<string, string> = {
-      'host': host,
-      'x-sdk-content-sha256': contentSha256,
-      'x-sdk-date': datetime,
-    };
-
     const signedHeaderKeys = ['host', 'x-sdk-content-sha256', 'x-sdk-date'];
-    const canonicalHeaders = signedHeaderKeys
-      .map(k => `${k}:${headers[k]}\n`)
-      .join('');
+    const canonicalHeaders = `host:${host}\nx-sdk-content-sha256:${contentSha256}\nx-sdk-date:${datetime}\n`;
     const signedHeaders = signedHeaderKeys.join(';');
 
     // 3. Canonical URI
@@ -278,15 +314,6 @@ class CodeArtsServiceImpl {
     return err.message ?? JSON.stringify(e);
   }
 
-  private parseUrl(url: string): { host: string; path: string; query: string } {
-    const u = new URL(url);
-    return {
-      host: u.host,
-      path: u.pathname,
-      query: u.search.substring(1), // 去掉 ?
-    };
-  }
-
   private encodeUri(path: string): string {
     // URI 编码，斜杠不编码
     return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
@@ -319,26 +346,24 @@ class CodeArtsServiceImpl {
 
   /** SHA256 哈希，返回 hex 字符串 */
   private async sha256Hex(data: string): Promise<string> {
-    const encoder = util.TextEncoder.createInto('utf-8');
+    const encoder = new util.TextEncoder();
     const input = encoder.encodeInto(data);
-    const md = crypto.createMac('SHA256');
-    // SHA256 hash (not HMAC) — use digest
     const hash = crypto.createHash('SHA256');
     hash.update(input);
     const result = hash.digest();
-    return buffer.from(result).toString('hex');
+    return uint8ToHex(result);
   }
 
   /** HMAC-SHA256，返回 hex 字符串 */
   private async hmacSha256Hex(key: string, data: string): Promise<string> {
-    const encoder = util.TextEncoder.createInto('utf-8');
+    const encoder = new util.TextEncoder();
     const keyBytes = encoder.encodeInto(key);
     const dataBytes = encoder.encodeInto(data);
     const mac = crypto.createMac('SHA256');
     mac.init(keyBytes);
     mac.update(dataBytes);
     const result = mac.doFinal();
-    return buffer.from(result).toString('hex');
+    return uint8ToHex(result);
   }
 }
 
