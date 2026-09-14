@@ -11,6 +11,7 @@
     "pages/AiWorkbench",
     "pages/AiSettingsPage",
     "pages/AiLoginPage",
-    "pages/AiAddProviderPage"
+    "pages/AiAddProviderPage",
+    "pages/AiLegalPage"
   ]
 }
