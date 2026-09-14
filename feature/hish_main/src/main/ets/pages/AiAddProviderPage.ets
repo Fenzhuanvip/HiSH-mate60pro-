@@ -22,7 +22,7 @@ class UiToastItem {
 
 @Entry
 @Component
-struct AddProviderPage {
+export struct AddProviderPage {
   @StorageProp('arkPilotBreakpoint') currentBreakpoint: ArkPilotBreakpoint = 'sm';
   @State private isSubmitting: boolean = false;
   @State private sparkSeed: number = 0;

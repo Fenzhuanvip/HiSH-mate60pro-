@@ -11,7 +11,7 @@ const HUAWEI_ID_LOGIN_SYSCAP: string = 'SystemCapability.AuthenticationServices.
 
 @Entry
 @Component
-struct LoginPage {
+export struct LoginPage {
   @State private errorText: string = '';
   @State private capabilitySupported: boolean = true;
   @State private lastAccount: string = '';

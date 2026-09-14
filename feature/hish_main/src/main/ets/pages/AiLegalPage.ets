@@ -58,7 +58,7 @@ const AGREEMENT_DATE = '2026年9月1日';
 
 @Entry
 @Component
-struct LegalPage {
+export struct LegalPage {
   @State kind: string = 'agreement';
   private controller: webview.WebviewController = new webview.WebviewController();
 

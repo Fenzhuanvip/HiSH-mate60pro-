@@ -463,7 +463,7 @@ class FormulaParseResult {
 
 @Entry
 @Component
-struct Index {
+export struct Index {
   @StorageProp('arkPilotBreakpoint')
   @Watch('onBreakpointChanged')
   currentBreakpoint: ArkPilotBreakpoint = 'sm';

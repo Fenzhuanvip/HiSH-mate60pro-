@@ -92,7 +92,7 @@ class ParsedGithubUrl {
 
 @Entry
 @Component
-struct SettingsPage {
+export struct SettingsPage {
   private readonly navItems: SettingsNavItem[] = [
     new SettingsNavItem('api', 'API', '服务商与模型接入', '#8B5CF6'),
     new SettingsNavItem('skills', 'Skills', 'Skills 与仓库源', '#14B8A6'),
