@@ -1,0 +1,29 @@
+{
+  "agcgw": {
+    "backurl": "https://api.cloud.huawei.com/",
+    "url": "https://api.cloud.huawei.com/"
+  },
+  "client": {
+    "cp_id": "10086000822963852",
+    "product_id": "101653523864888147",
+    "client_id": "2028293305296532672",
+    "client_secret": "F6F435BA010908B7DBC58E91A20629B4D4B84AA15765375F",
+    "app_id": "101653523864888147",
+    "package_name": "dev.hackeris.hish",
+    "api_key": "DgEDAAuh3sqQRaxKfrclhG3/z17GlbtG7glckw65VYJgwiGiwG2a",
+    "app_name": "Hisoa"
+  },
+  "service": {
+    "analytics": {
+      "collector_url": "https://datacollector.dragon.hicloud.com"
+    },
+    "cloudstorage": {
+      "storage_url": "https://agc-storage-drcn.platform.dbankcloud.cn"
+    },
+    "ml": {
+      "mlservice_url": "https://ml-api-drcn.ai.dbankcloud.com"
+    }
+  },
+  "region_code": "CN",
+  "country_code": "CN"
+}
