@@ -3974,62 +3974,63 @@ export struct Index {
    */
   private async executeInTerminalAndFeedBack(command: string): Promise<void> {
     this.terminalExecuting = true;
+    try {
+      /* 1. 记录终端缓冲区位置 */
+      const marker: number = TerminalBridge.getLineCount();
 
-    /* 1. 记录终端缓冲区位置 */
-    const marker: number = TerminalBridge.getLineCount();
+      /* 2. 注入命令到 QEMU 终端 */
+      TerminalBridge.sendCommand(command);
 
-    /* 2. 注入命令到 QEMU 终端 */
-    TerminalBridge.sendCommand(command);
+      /* 3. 结束当前 turn — 命令已在终端执行，不需要 AI sandbox 再跑 */
+      await this.declinePending();
 
-    /* 3. 结束当前 turn — 命令已在终端执行，不需要 AI sandbox 再跑 */
-    await this.declinePending();
-
-    /* 4. 等待当前 turn 完全结束 */
-    for (let i = 0; i < 30; i++) {
-      if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
-        break;
-      }
-      await this.delayMs(200);
-    }
-
-    /* 5. 轮询等待终端输出稳定 */
-    let lastLineCount: number = TerminalBridge.getLineCount();
-    let stableCount: number = 0;
-    const maxWaitMs: number = 15000;
-    const pollIntervalMs: number = 300;
-    const stableThresholdMs: number = 1000;
-    let waitedMs: number = 0;
-    while (waitedMs < maxWaitMs) {
-      await this.delayMs(pollIntervalMs);
-      waitedMs += pollIntervalMs;
-      const currentLineCount: number = TerminalBridge.getLineCount();
-      if (currentLineCount === lastLineCount) {
-        stableCount += pollIntervalMs;
-        if (stableCount >= stableThresholdMs) {
+      /* 4. 等待当前 turn 完全结束 */
+      for (let i = 0; i < 30; i++) {
+        if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
           break;
         }
-      } else {
-        stableCount = 0;
-        lastLineCount = currentLineCount;
+        await this.delayMs(200);
       }
-    }
 
-    /* 6. 捕获命令输出 */
-    const output: string = TerminalBridge.getOutputSince(marker, 100);
+      /* 5. 轮询等待终端输出稳定 */
+      let lastLineCount: number = TerminalBridge.getLineCount();
+      let stableCount: number = 0;
+      const maxWaitMs: number = 15000;
+      const pollIntervalMs: number = 300;
+      const stableThresholdMs: number = 1000;
+      let waitedMs: number = 0;
+      while (waitedMs < maxWaitMs) {
+        await this.delayMs(pollIntervalMs);
+        waitedMs += pollIntervalMs;
+        const currentLineCount: number = TerminalBridge.getLineCount();
+        if (currentLineCount === lastLineCount) {
+          stableCount += pollIntervalMs;
+          if (stableCount >= stableThresholdMs) {
+            break;
+          }
+        } else {
+          stableCount = 0;
+          lastLineCount = currentLineCount;
+        }
+      }
 
-    /* 7. 自动发 follow-up 消息给 AI */
-    let feedback: string;
-    if (output.trim().length > 0) {
-      feedback = `[终端执行结果]\n命令: \`${command}\`\n\n输出:\n\`\`\`\n${output}\n\`\`\`\n\n请根据以上输出结果继续。`;
-    } else {
-      feedback = `[终端执行结果]\n命令: \`${command}\`\n\n命令已执行，但未产生输出（或输出尚未捕获完成）。请根据情况继续。`;
-    }
+      /* 6. 捕获命令输出 */
+      const output: string = TerminalBridge.getOutputSince(marker, 100);
 
-    this.terminalExecuting = false;
+      /* 7. 自动发 follow-up 消息给 AI */
+      let feedback: string;
+      if (output.trim().length > 0) {
+        feedback = `[终端执行结果]\n命令: \`${command}\`\n\n输出:\n\`\`\`\n${output}\n\`\`\`\n\n请根据以上输出结果继续。`;
+      } else {
+        feedback = `[终端执行结果]\n命令: \`${command}\`\n\n命令已执行，但未产生输出（或输出尚未捕获完成）。请根据情况继续。`;
+      }
 
-    /* 直接调 runTurn 发送反馈，不走 sendMessage（避免重复附加终端输出） */
-    if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
-      void this.runTurn(feedback);
+      /* 直接调 runTurn 发送反馈，不走 sendMessage（避免重复附加终端输出） */
+      if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
+        void this.runTurn(feedback);
+      }
+    } finally {
+      this.terminalExecuting = false;
     }
   }
 
