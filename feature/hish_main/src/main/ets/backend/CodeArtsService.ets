@@ -389,8 +389,8 @@ class CodeArtsServiceImpl {
     const keyBytes = encoder.encodeInto(key);
     const dataBytes = encoder.encodeInto(data);
     const mac = cryptoFramework.createMac('SHA256');
-    // HarmonyOS cryptoFramework HMAC 规格: 'HMAC|SHA256' (管道符分隔，非 'HMAC-SHA256|256')
-    const keyGenerator = cryptoFramework.createSymKeyGenerator('HMAC|SHA256');
+    // HarmonyOS cryptoFramework: createSymKeyGenerator 只传 'HMAC'，摘要算法在 createMac('SHA256') 中指定
+    const keyGenerator = cryptoFramework.createSymKeyGenerator('HMAC');
     const keyDataBlob: cryptoFramework.DataBlob = { data: keyBytes };
     const symKey = keyGenerator.convertKeySync(keyDataBlob);
     mac.initSync(symKey);
