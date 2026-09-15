@@ -5,6 +5,7 @@ import { CustomHeadersEntry, ProviderCategory, ProviderRecord } from '../backend
 import { configManagerFacade } from '../backend/CodexBackend';
 import { ArkPilotBreakpoint } from '../adaptive/BreakpointTypes';
 import { breakpointManager } from '../adaptive/BreakpointManager';
+import { http } from '@kit.NetworkKit';
 
 type ToastTone = 'info' | 'success' | 'warning' | 'error';
 
@@ -35,6 +36,8 @@ export struct AddProviderPage {
   @State private apiKey: string = '';
   @State private baseUrl: string = '';
   @State private defaultModel: string = '';
+  @State private fetchedModels: string[] = [];
+  @State private isFetchingModels: boolean = false;
   @State private editId: string = '';
   @State private contextWindowStr: string = '';
   private modelAutoCompactTokenLimit: number = 0;
@@ -124,6 +127,86 @@ export struct AddProviderPage {
   private triggerFeedback(message: string, tone: ToastTone = 'info'): void {
     this.sparkSeed += 1;
     this.showToast(message, tone);
+  }
+
+  /**
+   * 从 provider 的 /models 接口拉取可用模型列表。
+   * 支持 OpenAI 兼容接口（大多数 provider 都支持）。
+   */
+  private async fetchModels(): Promise<void> {
+    const url: string = this.baseUrl.trim();
+    const key: string = this.apiKey.trim();
+    if (url.length === 0) {
+      this.triggerFeedback('请先填写 Base URL', 'warning');
+      return;
+    }
+    if (key.length === 0) {
+      this.triggerFeedback('请先填写 API Key', 'warning');
+      return;
+    }
+
+    this.isFetchingModels = true;
+    this.fetchedModels = [];
+
+    let modelsUrl: string = url;
+    if (modelsUrl.endsWith('/')) {
+      modelsUrl = modelsUrl.substring(0, modelsUrl.length - 1);
+    }
+    modelsUrl = `${modelsUrl}/models`;
+
+    try {
+      const httpRequest = http.createHttp();
+      const headerObj: Record<string, string> = {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      };
+      const response = await httpRequest.request(modelsUrl, {
+        method: http.RequestMethod.GET,
+        header: headerObj,
+        expectDataType: http.HttpDataType.STRING,
+        connectTimeout: 10000,
+        readTimeout: 15000,
+      });
+      httpRequest.destroy();
+
+      const respCode = response.responseCode;
+      const respData = response.result as string;
+
+      if (respCode < 200 || respCode >= 300) {
+        this.triggerFeedback(`获取失败: HTTP ${respCode}`, 'error');
+        this.isFetchingModels = false;
+        return;
+      }
+
+      const json = JSON.parse(respData) as object;
+      const data = (json as Record<string, object[]>)['data'];
+      if (data === undefined || data === null) {
+        this.triggerFeedback('返回格式异常，未找到 data 字段', 'error');
+        this.isFetchingModels = false;
+        return;
+      }
+
+      const models: string[] = [];
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i] as Record<string, string>;
+        const modelId = item['id'];
+        if (modelId !== undefined && modelId.length > 0) {
+          models.push(modelId);
+        }
+      }
+
+      if (models.length === 0) {
+        this.triggerFeedback('未找到可用模型', 'warning');
+      } else {
+        models.sort();
+        this.fetchedModels = models;
+        this.triggerFeedback(`找到 ${models.length.toString()} 个模型`, 'success');
+      }
+    } catch (e) {
+      const err = e as Error;
+      this.triggerFeedback(`获取失败: ${err.message ?? '网络错误'}`, 'error');
+    }
+    this.isFetchingModels = false;
   }
 
   private showToast(message: string, tone: ToastTone = 'info', duration: number = 1800): void {
@@ -665,11 +748,28 @@ export struct AddProviderPage {
         .padding({ left: 14, right: 14 }).margin({ top: 8 })
 
       this.formLabel('默认模型')
-      TextInput({ text: $$this.defaultModel, placeholder: '例如：gpt-5.4' })
-        .width('100%').height(42).backgroundColor(this.inputSurface())
-        .border({ width: 1, color: '#DEE6F2' }).borderRadius(14)
-        .padding({ left: 14, right: 14 }).margin({ top: 8 })
+      Row() {
+        TextInput({ text: $$this.defaultModel, placeholder: '例如：gpt-5.4' })
+          .width('70%').height(42).backgroundColor(this.inputSurface())
+          .border({ width: 1, color: '#DEE6F2' }).borderRadius(14)
+          .padding({ left: 14, right: 14 })
 
+        Button(this.isFetchingModels ? '获取中...' : '获取模型列表')
+          .width('30%').height(42)
+          .fontSize(12)
+          .backgroundColor(this.isFetchingModels ? '#94A3B8' : '#2284F6')
+          .fontColor('#FFFFFF')
+          .borderRadius(14)
+          .margin({ left: 6 })
+          .enabled(!this.isFetchingModels)
+          .onClick(() => {
+            void this.fetchModels();
+          })
+      }
+      .width('100%')
+      .margin({ top: 8 })
+
+      /* 预设模型快捷按钮 */
       if (this.currentPresetModels().length > 0) {
         Flex({ wrap: FlexWrap.Wrap }) {
           ForEach(this.currentPresetModels(), (model: string) => {
@@ -702,6 +802,35 @@ export struct AddProviderPage {
             .margin({ left: 6 })
         }
         .margin({ top: 4 })
+      }
+
+      /* 从 API 拉取到的模型列表 */
+      if (this.fetchedModels.length > 0) {
+        Text('从 API 获取的模型：')
+          .fontSize(11)
+          .fontColor(this.textMuted())
+          .margin({ top: 10 })
+
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.fetchedModels, (model: string) => {
+            Button(model)
+              .height(28)
+              .fontSize(10)
+              .fontWeight(this.defaultModel === model ? FontWeight.Medium : FontWeight.Regular)
+              .fontColor(this.defaultModel === model ? '#FFFFFF' : this.textMuted())
+              .backgroundColor(this.defaultModel === model ? '#2284F6' : '#F5F7FB')
+              .borderRadius(10)
+              .border({ width: this.defaultModel === model ? 0 : 1, color: '#E1E7F0' })
+              .padding({ left: 10, right: 10 })
+              .margin({ right: 8, bottom: 8 })
+              .onClick(() => {
+                this.defaultModel = model;
+                this.triggerFeedback(`已选择模型 ${model}`, 'success');
+              })
+          }, (model: string) => model)
+        }
+        .width('100%')
+        .margin({ top: 6 })
       }
 
       this.formLabel('上下文窗口大小（可选）')
