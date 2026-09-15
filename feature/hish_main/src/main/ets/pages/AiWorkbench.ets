@@ -596,6 +596,7 @@ export struct Index {
   private backendPendingApproval: CodexApprovalRequest | null = null;
   private backendPendingRequestUserInput: CodexRequestUserInput | null = null;
   @State private pendingApproval: CodexApprovalRequest | null = null;
+  @State private terminalExecuting: boolean = false;
   @State private pendingRequestUserInput: CodexRequestUserInput | null = null;
   @State private requestUserInputVersion: number = 0;
   @State private expandedIntermediateMessageIds: string[] = [];
@@ -3932,11 +3933,19 @@ export struct Index {
   }
 
   /**
-   * 把 AI 生成的命令送到 QEMU 终端执行。
-   * 从审批请求的 detail 中提取命令文本，调 TerminalBridge.sendCommand()。
+   * 把 AI 生成的命令送到 QEMU 终端执行，并捕获输出回传给 AI。
+   *
+   * 流程：
+   * 1. 从审批请求提取命令文本
+   * 2. 记录终端缓冲区位置 marker
+   * 3. 注入命令到 QEMU 终端
+   * 4. declinePending 结束当前 turn（命令已在终端执行，不需要 AI sandbox 再跑一遍）
+   * 5. 轮询等待终端输出稳定（1 秒无新行 或 最多等 15 秒）
+   * 6. 取命令输出，自动发 follow-up 消息给 AI
+   * 7. AI 收到输出后可以继续分析、提议下一条命令 — 形成闭环
    */
   private sendCommandToTerminal(): void {
-    if (this.pendingApproval === null) {
+    if (this.pendingApproval === null || this.terminalExecuting) {
       return;
     }
     const detail: string = this.pendingApproval.detail;
@@ -3956,9 +3965,78 @@ export struct Index {
     }
     /* 去掉可能的前缀符号（如 $ 或 # 提示符） */
     command = command.replace(/^[$#>]\s*/, "");
+    /* 启动异步执行流程 */
+    void this.executeInTerminalAndFeedBack(command);
+  }
+
+  /**
+   * 在终端执行命令，等待输出稳定后回传给 AI。
+   */
+  private async executeInTerminalAndFeedBack(command: string): Promise<void> {
+    this.terminalExecuting = true;
+
+    /* 1. 记录终端缓冲区位置 */
+    const marker: number = TerminalBridge.getLineCount();
+
+    /* 2. 注入命令到 QEMU 终端 */
     TerminalBridge.sendCommand(command);
-    /* 同时拒绝审批 — 命令已送到终端，不需要 AI sandbox 再执行一遍 */
-    void this.declinePending();
+
+    /* 3. 结束当前 turn — 命令已在终端执行，不需要 AI sandbox 再跑 */
+    await this.declinePending();
+
+    /* 4. 等待当前 turn 完全结束 */
+    for (let i = 0; i < 30; i++) {
+      if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
+        break;
+      }
+      await this.delayMs(200);
+    }
+
+    /* 5. 轮询等待终端输出稳定 */
+    let lastLineCount: number = TerminalBridge.getLineCount();
+    let stableCount: number = 0;
+    const maxWaitMs: number = 15000;
+    const pollIntervalMs: number = 300;
+    const stableThresholdMs: number = 1000;
+    let waitedMs: number = 0;
+    while (waitedMs < maxWaitMs) {
+      await this.delayMs(pollIntervalMs);
+      waitedMs += pollIntervalMs;
+      const currentLineCount: number = TerminalBridge.getLineCount();
+      if (currentLineCount === lastLineCount) {
+        stableCount += pollIntervalMs;
+        if (stableCount >= stableThresholdMs) {
+          break;
+        }
+      } else {
+        stableCount = 0;
+        lastLineCount = currentLineCount;
+      }
+    }
+
+    /* 6. 捕获命令输出 */
+    const output: string = TerminalBridge.getOutputSince(marker, 100);
+
+    /* 7. 自动发 follow-up 消息给 AI */
+    let feedback: string;
+    if (output.trim().length > 0) {
+      feedback = `[终端执行结果]\n命令: \`${command}\`\n\n输出:\n\`\`\`\n${output}\n\`\`\`\n\n请根据以上输出结果继续。`;
+    } else {
+      feedback = `[终端执行结果]\n命令: \`${command}\`\n\n命令已执行，但未产生输出（或输出尚未捕获完成）。请根据情况继续。`;
+    }
+
+    this.terminalExecuting = false;
+
+    /* 直接调 runTurn 发送反馈，不走 sendMessage（避免重复附加终端输出） */
+    if (!this.isWorkspaceRunning(this.activeWorkspaceId)) {
+      void this.runTurn(feedback);
+    }
+  }
+
+  private delayMs(ms: number): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, ms);
+    });
   }
 
   private async selectWorkspace(item: WorkspaceItem): Promise<void> {

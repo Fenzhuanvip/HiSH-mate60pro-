@@ -11,8 +11,10 @@ const MAX_LINES = 200; // 环形缓冲区最大行数
  * 能力：
  * 1. captureOutput(data) — WebTerminal.onData 调此方法，把终端输出存入环形缓冲区
  * 2. getRecentOutput(lines?) — 获取最近 N 行终端纯文本输出，供 AI 作为上下文
- * 3. sendCommand(cmd) — 往 QEMU 终端注入一条命令并回车，等价于用户手动敲
- * 4. 事件通知 — 发命令时通过 AppStorage 写一个递增计数器，Index.ets 监听后自动切到终端 Tab
+ * 3. getLineCount() — 获取当前缓冲区行数（用作位置标记）
+ * 4. getOutputSince(marker, maxLines?) — 获取从指定标记之后的新输出
+ * 5. sendCommand(cmd) — 往 QEMU 终端注入一条命令并回车，等价于用户手动敲
+ * 6. 事件通知 — 发命令时通过 AppStorage 写一个递增计数器，Index.ets 监听后自动切到终端 Tab
  */
 class TerminalBridgeImpl {
   private static instance: TerminalBridgeImpl | null = null;
@@ -78,6 +80,39 @@ class TerminalBridgeImpl {
     for (let i = 0; i < actualLines; i++) {
       const idx = (startIdx + i) % MAX_LINES;
       result.push(this.lineBuffer[idx]);
+    }
+    return result.join('\n');
+  }
+
+  /**
+   * 获取当前缓冲区行数，用作位置标记。
+   * 在发命令前记录 marker，之后用 getOutputSince(marker) 取增量输出。
+   */
+  getLineCount(): number {
+    return this.lineCount;
+  }
+
+  /**
+   * 获取从指定 marker 之后的新输出（纯文本）。
+   * 用于"在终端执行"后捕获命令输出，回传给 AI。
+   * @param marker 之前记录的 lineCount
+   * @param maxLines 最多返回行数（默认 100）
+   */
+  getOutputSince(marker: number, maxLines: number = 100): string {
+    if (this.lineCount <= marker) {
+      return '';
+    }
+    const newLines: number = this.lineCount - marker;
+    const actualLines: number = Math.min(newLines, maxLines);
+    const startIdx: number = this.lineCount - actualLines;
+    const result: string[] = [];
+    for (let i = 0; i < actualLines; i++) {
+      const idx = (startIdx + i) % MAX_LINES;
+      result.push(this.lineBuffer[idx]);
+    }
+    // 加上当前未完成的行
+    if (this.partialLine.trim().length > 0 && actualLines === newLines) {
+      result.push(this.partialLine.trimEnd());
     }
     return result.join('\n');
   }
