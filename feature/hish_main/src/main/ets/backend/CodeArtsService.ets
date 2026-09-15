@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { crypto } from '@kit.CryptoArchitectureKit';
+import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { http } from '@kit.NetworkKit';
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
@@ -54,6 +54,29 @@ export interface CodeArtsConfig {
   projectId: string;
 }
 
+/** URL 解析结果 */
+interface ParsedUrl {
+  host: string;
+  path: string;
+  query: string;
+}
+
+/** 连接测试结果 */
+interface ConnectionResult {
+  success: boolean;
+  message: string;
+}
+
+/** 项目列表响应 */
+interface ProjectsResponse {
+  projects?: CodeArtsProject[];
+}
+
+/** 仓库列表响应 */
+interface ReposResponse {
+  repositories?: CodeArtsRepo[];
+}
+
 /** 将 Uint8Array 转 hex 字符串 */
 function uint8ToHex(bytes: Uint8Array): string {
   const hexChars = '0123456789abcdef';
@@ -67,7 +90,7 @@ function uint8ToHex(bytes: Uint8Array): string {
 }
 
 /** 手动解析 URL（ArkTS 无 URL 构造器） */
-function parseUrl(url: string): { host: string; path: string; query: string } {
+function parseUrl(url: string): ParsedUrl {
   // 去掉 https://
   let rest = url;
   if (rest.startsWith('https://')) {
@@ -97,7 +120,8 @@ function parseUrl(url: string): { host: string; path: string; query: string } {
     path = pathAndQuery;
     query = '';
   }
-  return { host, path, query };
+  const result: ParsedUrl = { host: host, path: path, query: query };
+  return result;
 }
 
 class CodeArtsServiceImpl {
@@ -168,15 +192,18 @@ class CodeArtsServiceImpl {
   /**
    * 测试连接 — 调用 API 列出项目，验证 AK/SK 是否有效。
    */
-  async testConnection(): Promise<{ success: boolean; message: string }> {
+  async testConnection(): Promise<ConnectionResult> {
     if (this.config === null) {
-      return { success: false, message: '未配置 AK/SK' };
+      const failResult: ConnectionResult = { success: false, message: '未配置 AK/SK' };
+      return failResult;
     }
     try {
       const projects = await this.listProjects();
-      return { success: true, message: `连接成功，找到 ${projects.length} 个项目` };
+      const okResult: ConnectionResult = { success: true, message: `连接成功，找到 ${projects.length} 个项目` };
+      return okResult;
     } catch (e) {
-      return { success: false, message: `连接失败: ${this.describeError(e)}` };
+      const errResult: ConnectionResult = { success: false, message: `连接失败: ${this.describeError(e)}` };
+      return errResult;
     }
   }
 
@@ -188,7 +215,7 @@ class CodeArtsServiceImpl {
     const endpoint = this.getEndpoint();
     const url = `https://${endpoint}/v1/projects?limit=50`;
     const response = await this.signedRequest('GET', url, '');
-    const json = JSON.parse(response) as { projects?: CodeArtsProject[] };
+    const json = JSON.parse(response) as ProjectsResponse;
     return json.projects ?? [];
   }
 
@@ -200,7 +227,7 @@ class CodeArtsServiceImpl {
     const endpoint = this.getEndpoint();
     const url = `https://${endpoint}/v1/repositories?project_id=${projectId}&limit=50`;
     const response = await this.signedRequest('GET', url, '');
-    const json = JSON.parse(response) as { repositories?: CodeArtsRepo[] };
+    const json = JSON.parse(response) as ReposResponse;
     return json.repositories ?? [];
   }
 
@@ -348,9 +375,9 @@ class CodeArtsServiceImpl {
   private async sha256Hex(data: string): Promise<string> {
     const encoder = new util.TextEncoder();
     const input = encoder.encodeInto(data);
-    const hash = crypto.createHash('SHA256');
-    hash.update(input);
-    const result = hash.digest();
+    const md = cryptoFramework.createMd('SHA256');
+    md.updateSync(input);
+    const result = md.digestSync();
     return uint8ToHex(result);
   }
 
@@ -359,10 +386,13 @@ class CodeArtsServiceImpl {
     const encoder = new util.TextEncoder();
     const keyBytes = encoder.encodeInto(key);
     const dataBytes = encoder.encodeInto(data);
-    const mac = crypto.createMac('SHA256');
-    mac.init(keyBytes);
-    mac.update(dataBytes);
-    const result = mac.doFinal();
+    const mac = cryptoFramework.createMac('SHA256');
+    const keyGenerator = cryptoFramework.createSymKeyGenerator('HMAC-SHA256|256');
+    const keyBlob: cryptoFramework.SymKey = { algName: 'HMAC', params: null, data: keyBytes };
+    const symKey = keyGenerator.convertKeySync(keyBlob);
+    mac.initSync(symKey);
+    mac.updateSync(dataBytes);
+    const result = mac.doFinalSync();
     return uint8ToHex(result);
   }
 }
