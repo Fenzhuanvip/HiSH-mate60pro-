@@ -12,6 +12,10 @@
       {
         "name": "ohos.arkui.UIMaterial.state",
         "value": "enable"
+      },
+      {
+        "name": "client_id",
+        "value": "109855583"
       }
     ],
     "requestPermissions": [

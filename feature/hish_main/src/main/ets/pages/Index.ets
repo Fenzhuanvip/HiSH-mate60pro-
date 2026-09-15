@@ -83,31 +83,6 @@ struct PcIndex {
 
         Blank()
 
-        // AI 工作台入口 — 顶部按钮，不再藏在终端菜单里
-        Button({
-          type: ButtonType.Normal,
-          buttonStyle: ButtonStyleMode.TEXTUAL,
-          controlSize: ControlSize.SMALL
-        }) {
-          Row() {
-            SymbolGlyph($r('sys.symbol.star'))
-              .fontSize('16vp')
-              .width(16)
-              .height(16)
-              .fontColor(['#ffffff'])
-            Text('AI 工作台')
-              .fontSize('14fp')
-              .fontColor($r('sys.color.white'))
-              .margin({ left: 4 })
-          }
-        }
-        .borderRadius(6)
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-        .margin({ right: 10 })
-        .onClick(() => {
-          router.pushUrl({ url: 'pages/AiWorkbench' })
-        })
-
         Row() {
           Button({
             type: ButtonType.Normal,
@@ -200,7 +175,7 @@ struct PcIndex {
       .height(48)
       .padding({
         left: 15,
-        right: 150,
+        right: 15,
       })
 
       WebTerminal({ virtKeyEnabled: false })
