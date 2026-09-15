@@ -252,6 +252,16 @@ export struct LoginPage {
         .width('100%')
         .justifyContent(FlexAlign.Center)
         .margin({ top: 40 })
+
+        // 跳过登录，直接进入 AI 工作台（自用模式）
+        Text('跳过登录')
+          .copyOption(CopyOptions.None)
+          .fontSize(14)
+          .fontColor(this.textMuted())
+          .margin({ top: 20 })
+          .onClick(() => {
+            router.replaceUrl({ url: 'pages/AiWorkbench' });
+          })
       }
       .width('100%')
       .constraintSize({ maxWidth: 380 })
