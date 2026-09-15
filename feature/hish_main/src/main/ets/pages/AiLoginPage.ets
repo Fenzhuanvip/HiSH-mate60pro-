@@ -131,13 +131,7 @@ export struct LoginPage {
   }
 
   build() {
-    Stack() {
-      Column() {}
-        .width('100%')
-        .height('100%')
-        .backgroundColor('#EEF2F7')
-        // 纯血鸿蒙不支持 expandSafeArea 全屏延伸
-
+    Column() {
       Column() {
         Text('ArkPilot')
           .copyOption(CopyOptions.None)
@@ -264,9 +258,9 @@ export struct LoginPage {
             router.replaceUrl({ url: 'pages/AiWorkbench' });
           })
       }
-      .width('100%')
+      .width('86%')
       .constraintSize({ maxWidth: 380 })
-      .padding({ left: 28, right: 28, top: 48, bottom: 48 })
+      .padding({ left: 28, right: 28, top: 40, bottom: 40 })
       .alignItems(HorizontalAlign.Center)
       .backgroundColor(this.surface())
       .borderRadius(24)
@@ -274,5 +268,8 @@ export struct LoginPage {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor('#EEF2F7')
+    .alignItems(HorizontalAlign.Center)
+    .justifyContent(FlexAlign.Center)
   }
 }
