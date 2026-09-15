@@ -260,6 +260,7 @@ export struct LoginPage {
           .fontColor(this.textMuted())
           .margin({ top: 20 })
           .onClick(() => {
+            AppStorage.setOrCreate<boolean>('arkPilotLoggedIn', true);
             router.replaceUrl({ url: 'pages/AiWorkbench' });
           })
       }
