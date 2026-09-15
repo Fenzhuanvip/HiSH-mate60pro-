@@ -75,6 +75,7 @@ export struct ProviderSetupWizard {
   @State private isSaving: boolean = false
   @State private errorText: string = ''
   private onComplete: () => void = (): void => {}
+  private onSkip: () => void = (): void => {}
 
   aboutToAppear(): void {
     // 默认选中第一个模板
@@ -272,6 +273,15 @@ export struct ProviderSetupWizard {
         .enabled(!this.isSaving)
         .onClick(() => {
           void this.saveAndComplete()
+        })
+
+      // 跳过按钮 — 稍后配置
+      Text('跳过，稍后配置')
+        .fontSize(13)
+        .fontColor('#94A3B8')
+        .margin({ top: 12 })
+        .onClick(() => {
+          this.onSkip()
         })
     }
     .width('100%')

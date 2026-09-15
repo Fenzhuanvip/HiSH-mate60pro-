@@ -10395,11 +10395,22 @@ export struct Index {
               .copyOption(CopyOptions.LocalDevice)
               .fontSize(16)
               .fontColor(this.themeTextMuted())
-            Text('请新建项目')
+            Text('点击下方按钮创建一个新项目')
               .copyOption(CopyOptions.LocalDevice)
               .fontSize(12)
               .fontColor(this.themeTextMuted())
               .margin({ top: 8 })
+            Button('新建项目')
+              .fontSize(14)
+              .height(40)
+              .width(160)
+              .backgroundColor('#2563EB')
+              .fontColor('#FFFFFF')
+              .borderRadius(10)
+              .margin({ top: 20 })
+              .onClick(() => {
+                this.openCreateProjectDialog();
+              })
           } else {
             Text('当前暂无会话')
               .copyOption(CopyOptions.LocalDevice)
@@ -10413,7 +10424,8 @@ export struct Index {
           }
         }
         .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
+        .justifyContent(FlexAlign.Start)
+        .margin({ top: 24 })
       } else {
         this.chatCenterView()
       }
@@ -11859,6 +11871,9 @@ export struct Index {
               onComplete: () => {
                 this.showProviderWizard = false;
                 this.loadProviderConfig();
+              },
+              onSkip: () => {
+                this.showProviderWizard = false;
               }
             })
           }
