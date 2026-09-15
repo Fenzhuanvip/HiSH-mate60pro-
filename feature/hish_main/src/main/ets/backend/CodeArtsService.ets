@@ -383,21 +383,59 @@ class CodeArtsServiceImpl {
     return uint8ToHex(resultBlob.data);
   }
 
-  /** HMAC-SHA256，返回 hex 字符串 */
+  /** SHA256 哈希（Uint8Array 输入），返回 Uint8Array */
+  private sha256Bytes(input: Uint8Array): Uint8Array {
+    const md = cryptoFramework.createMd('SHA256');
+    const inputBlob: cryptoFramework.DataBlob = { data: input };
+    md.updateSync(inputBlob);
+    const resultBlob = md.digestSync();
+    return resultBlob.data;
+  }
+
+  /**
+   * HMAC-SHA256，返回 hex 字符串。
+   * 手动实现 HMAC，避免 cryptoFramework MAC 接口的兼容性问题。
+   * HMAC(K, m) = H((K ⊕ opad) || H((K ⊕ ipad) || m))
+   */
   private async hmacSha256Hex(key: string, data: string): Promise<string> {
     const encoder = new util.TextEncoder();
-    const keyBytes = encoder.encodeInto(key);
+    let keyBytes = encoder.encodeInto(key);
     const dataBytes = encoder.encodeInto(data);
-    const mac = cryptoFramework.createMac('SHA256');
-    // HarmonyOS cryptoFramework: createSymKeyGenerator 只传 'HMAC'，摘要算法在 createMac('SHA256') 中指定
-    const keyGenerator = cryptoFramework.createSymKeyGenerator('HMAC');
-    const keyDataBlob: cryptoFramework.DataBlob = { data: keyBytes };
-    const symKey = keyGenerator.convertKeySync(keyDataBlob);
-    mac.initSync(symKey);
-    const dataBlob: cryptoFramework.DataBlob = { data: dataBytes };
-    mac.updateSync(dataBlob);
-    const resultBlob = mac.doFinalSync();
-    return uint8ToHex(resultBlob.data);
+
+    const blockSize = 64; // SHA256 block size
+
+    // 如果 key 超过 block size，先 hash
+    if (keyBytes.length > blockSize) {
+      keyBytes = this.sha256Bytes(keyBytes);
+    }
+
+    // 补零到 blockSize
+    const paddedKey = new Uint8Array(blockSize);
+    for (let i = 0; i < blockSize; i++) {
+      paddedKey[i] = i < keyBytes.length ? keyBytes[i] : 0;
+    }
+
+    // ipad = K ⊕ 0x36, opad = K ⊕ 0x5c
+    const ipad = new Uint8Array(blockSize);
+    const opad = new Uint8Array(blockSize);
+    for (let i = 0; i < blockSize; i++) {
+      ipad[i] = paddedKey[i] ^ 0x36;
+      opad[i] = paddedKey[i] ^ 0x5c;
+    }
+
+    // inner = SHA256(ipad || data)
+    const innerInput = new Uint8Array(blockSize + dataBytes.length);
+    innerInput.set(ipad, 0);
+    innerInput.set(dataBytes, blockSize);
+    const innerHash = this.sha256Bytes(innerInput);
+
+    // outer = SHA256(opad || innerHash)
+    const outerInput = new Uint8Array(blockSize + innerHash.length);
+    outerInput.set(opad, 0);
+    outerInput.set(innerHash, blockSize);
+    const outerHash = this.sha256Bytes(outerInput);
+
+    return uint8ToHex(outerHash);
   }
 }
 
