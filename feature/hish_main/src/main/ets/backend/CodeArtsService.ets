@@ -371,14 +371,16 @@ class CodeArtsServiceImpl {
     return `${yyyy}${mm}${dd}T${hh}${mi}${ss}Z`;
   }
 
+
   /** SHA256 哈希，返回 hex 字符串 */
   private async sha256Hex(data: string): Promise<string> {
     const encoder = new util.TextEncoder();
     const input = encoder.encodeInto(data);
     const md = cryptoFramework.createMd('SHA256');
-    md.updateSync(input);
-    const result = md.digestSync();
-    return uint8ToHex(result);
+    const inputBlob: cryptoFramework.DataBlob = { data: input };
+    md.updateSync(inputBlob);
+    const resultBlob = md.digestSync();
+    return uint8ToHex(resultBlob.data);
   }
 
   /** HMAC-SHA256，返回 hex 字符串 */
@@ -388,12 +390,13 @@ class CodeArtsServiceImpl {
     const dataBytes = encoder.encodeInto(data);
     const mac = cryptoFramework.createMac('SHA256');
     const keyGenerator = cryptoFramework.createSymKeyGenerator('HMAC-SHA256|256');
-    const keyBlob: cryptoFramework.SymKey = { algName: 'HMAC', params: null, data: keyBytes };
-    const symKey = keyGenerator.convertKeySync(keyBlob);
+    const keyDataBlob: cryptoFramework.DataBlob = { data: keyBytes };
+    const symKey = keyGenerator.convertKeySync(keyDataBlob);
     mac.initSync(symKey);
-    mac.updateSync(dataBytes);
-    const result = mac.doFinalSync();
-    return uint8ToHex(result);
+    const dataBlob: cryptoFramework.DataBlob = { data: dataBytes };
+    mac.updateSync(dataBlob);
+    const resultBlob = mac.doFinalSync();
+    return uint8ToHex(resultBlob.data);
   }
 }
 
