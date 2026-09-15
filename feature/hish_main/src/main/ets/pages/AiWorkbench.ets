@@ -898,6 +898,21 @@ export struct Index {
     this.restoreWorkspaceBindings();
     this.loadProjects();
 
+    /* 首次打开：如果没有项目，自动创建默认项目 + 默认会话，直接进聊天界面 */
+    if (this.projects.length === 0) {
+      const defaultProjId: string = `proj_${Date.now().toString()}`;
+      const defaultProj: ProjectRecord = new ProjectRecord(defaultProjId, '默认项目', '', true, '');
+      this.projects = [defaultProj];
+      this.saveProjects();
+      const defaultWsId: number = 1;
+      const defaultWorkspace: WorkspaceItem = new WorkspaceItem(defaultWsId, '新对话', '', `session:${defaultWsId.toString()}`, defaultProjId);
+      this.workspaces.push(defaultWorkspace);
+      this.workspaceIds.set(defaultWsId, `session:${defaultWsId.toString()}`);
+      this.activeWorkspaceId = defaultWsId;
+      this.syncRecentWorkspaces();
+      this.persistWorkspaceBindings();
+    }
+
     void this.restoreSessionsFromBackend();
 
     this.scheduleEmbeddedHostReconnect(2000);
