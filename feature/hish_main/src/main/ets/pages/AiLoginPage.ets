@@ -136,7 +136,7 @@ export struct LoginPage {
         .width('100%')
         .height('100%')
         .backgroundColor('#EEF2F7')
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        // 纯血鸿蒙不支持 expandSafeArea 全屏延伸
 
       Column() {
         Text('ArkPilot')

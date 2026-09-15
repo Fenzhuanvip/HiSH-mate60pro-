@@ -351,14 +351,6 @@ struct PcIndex {
 @Component
 struct PhoneOrTablet {
   @StorageProp(appOption.displayStatusBar) displayStatusBar: boolean = false
-  @State private activeTab: number = 0
-  @Watch("onTerminalCommandSent") @StorageProp("terminalCommandSent") terminalCommandSent: number = 0
-  /* 当 AI 往终端发了命令，自动切到终端 Tab 让用户看结果 */
-  onTerminalCommandSent(): void {
-    if (this.terminalCommandSent > 0) {
-      this.activeTab = 0;
-    }
-  }
 
   build() {
     Column() {
@@ -374,69 +366,8 @@ struct PhoneOrTablet {
         .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
       }
 
-      // 主内容区
-      if (this.activeTab === 0) {
-        WebTerminal({ virtKeyEnabled: true })
-          .layoutWeight(1)
-      } else {
-        // AI 工作台 tab — 跳转到 AiWorkbench 页面
-        Column() {
-          Text('正在打开 AI 工作台…')
-            .fontSize(14)
-            .fontColor('#64748B')
-            .margin({ top: 40 })
-        }
-        .width('100%')
+      WebTerminal({ virtKeyEnabled: true })
         .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .onAppear(() => {
-          router.pushUrl({ url: 'pages/AiWorkbench' })
-          this.activeTab = 0
-        })
-      }
-
-      // 底部 Tab 栏
-      Row() {
-        // 终端 Tab
-        Column() {
-          SymbolGlyph($r('sys.symbol.list_bullet'))
-            .fontSize('20vp')
-            .width(24)
-            .height(24)
-            .fontColor(this.activeTab === 0 ? ['#3B82F6'] : ['#64748B'])
-          Text('终端')
-            .fontSize('10fp')
-            .fontColor(this.activeTab === 0 ? '#3B82F6' : '#64748B')
-            .margin({ top: 2 })
-        }
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .onClick(() => {
-          this.activeTab = 0
-        })
-
-        // AI 工作台 Tab
-        Column() {
-          SymbolGlyph($r('sys.symbol.star'))
-            .fontSize('20vp')
-            .width(24)
-            .height(24)
-            .fontColor(this.activeTab === 1 ? ['#3B82F6'] : ['#64748B'])
-          Text('AI 工作台')
-            .fontSize('10fp')
-            .fontColor(this.activeTab === 1 ? '#3B82F6' : '#64748B')
-            .margin({ top: 2 })
-        }
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .onClick(() => {
-          router.pushUrl({ url: 'pages/AiWorkbench' })
-        })
-      }
-      .width('100%')
-      .height(52)
-      .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-      .border({ width: { top: 0.5 }, color: { top: '#E2E8F0' } })
     }
     .width('100%')
     .height('100%')

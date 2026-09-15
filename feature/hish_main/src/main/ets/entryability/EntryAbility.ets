@@ -116,15 +116,7 @@ export default class EntryAbility extends UIAbility {
 
       AppStorage.setOrCreate('mainWindow', mainWindow)
 
-      // 沉浸式：内容延伸至系统栏下方 + 透明系统栏（鸿蒙 6.1 沉浸光感）
-      mainWindow.setWindowLayoutFullScreen(true);
-      mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
-        navigationBarColor: '#00000000',
-        statusBarContentColor: '#FFFFFF',
-        navigationBarContentColor: '#FFFFFF'
-      });
-
+      // 纯血鸿蒙不支持 setWindowLayoutFullScreen，使用标准非全屏模式
       // 获取状态栏高度，存入 AppStorage 供 WebTerminal 顶部留白
       const avoidArea = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       AppStorage.setOrCreate('statusBarHeight', avoidArea.topRect.height);
@@ -446,11 +438,7 @@ export default class EntryAbility extends UIAbility {
     if (runningInBackground) {
       const success = await backgroundRunningManager.startBackground(this.context)
       if (!success) {
-        const window = AppStorage.get('mainWindow')!! as window.Window
-        window.getUIContext().getPromptAction().showToast({
-          message: $r('app.string.failed_to_force_background'),
-          duration: 3000
-        })
+        hilog.warn(DOMAIN, 'testTag', '后台定位启动失败，不影响正常使用')
       }
     }
   }
@@ -568,10 +556,7 @@ export default class EntryAbility extends UIAbility {
         await backgroundRunningManager.grantLocationPermission(uiContext.getHostContext() as common.UIAbilityContext)
       }
     } catch (e) {
-      uiContext.getPromptAction().showToast({
-        message: $r('app.string.failed_to_force_background'),
-        duration: 3000
-      })
+      hilog.warn(DOMAIN, 'testTag', '后台定位启动失败: %{public}s', JSON.stringify(e))
     }
   }
 }

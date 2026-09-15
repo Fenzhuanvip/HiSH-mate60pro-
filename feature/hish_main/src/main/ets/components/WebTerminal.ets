@@ -218,6 +218,10 @@ export default struct WebTerminal {
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.arrow_clockwise')).fontSize($r('sys.float.Title_S')),
       action: () => this.fixAptMirror()
     }, {
+      value: 'AI 工作台',
+      symbolIcon: new SymbolGlyphModifier($r('sys.symbol.star')).fontSize($r('sys.float.Title_S')),
+      action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/AiWorkbench' })
+    }, {
       value: $r('app.string.menu_settings'),
       symbolIcon: new SymbolGlyphModifier($r('sys.symbol.gearshape')).fontSize($r('sys.float.Title_S')),
       action: () => this.getUIContext().getRouter().pushUrl({ url: 'pages/SettingsPage' })

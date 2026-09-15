@@ -11885,7 +11885,7 @@ export struct Index {
         .width('100%')
         .height('100%')
         .padding(10)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        // 纯血鸿蒙不支持 expandSafeArea 全屏延伸
 
         if (this.isPhoneBreakpoint() && this.showLeftDrawer) {
           Stack({ alignContent: Alignment.TopStart }) {
@@ -12013,7 +12013,7 @@ export struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor(this.themeRootBackground())
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    // 纯血鸿蒙不支持 expandSafeArea 全屏延伸
     .onClick(() => {
       this.showProjectMenuId = '';
       this.showSessionMenuId = '';

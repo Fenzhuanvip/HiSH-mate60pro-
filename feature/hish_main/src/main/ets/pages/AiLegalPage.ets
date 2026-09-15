@@ -173,7 +173,7 @@ export struct LegalPage {
     .width('100%')
     .height('100%')
     .backgroundColor('#F1F3F5')
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    // 纯血鸿蒙不支持 expandSafeArea 全屏延伸
   }
 
   private sections(): LegalSection[] {
